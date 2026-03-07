@@ -1,5 +1,3 @@
-<div align="center">
-
 <img src="./docs/images/logo.png" alt="Remembr Logo" width="400"/>
 
 # Remembr
