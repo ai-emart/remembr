@@ -10,11 +10,12 @@ This guide covers deploying Remembr to production environments including Railway
 2. [Railway Deployment](#railway-deployment)
 3. [Docker Deployment](#docker-deployment)
 4. [Docker Compose Deployment](#docker-compose-deployment)
-5. [Kubernetes Deployment](#kubernetes-deployment)
-6. [Environment Configuration](#environment-configuration)
-7. [Database Setup](#database-setup)
-8. [Monitoring & Scaling](#monitoring--scaling)
-9. [Security Checklist](#security-checklist)
+5. [PgBouncer Connection Pooling](#pgbouncer-connection-pooling)
+6. [Kubernetes Deployment](#kubernetes-deployment)
+7. [Environment Configuration](#environment-configuration)
+8. [Database Setup](#database-setup)
+9. [Monitoring & Scaling](#monitoring--scaling)
+10. [Security Checklist](#security-checklist)
 
 ---
 
@@ -601,6 +602,64 @@ docker-compose down
 # Stop and remove volumes
 docker-compose down -v
 ```
+
+---
+
+## PgBouncer Connection Pooling
+
+### Why PgBouncer?
+
+FastAPI + asyncpg can open many concurrent database connections — one per active request. PostgreSQL handles each connection with a dedicated OS process, so 200 simultaneous API requests would create 200 PostgreSQL processes. This wastes memory and degrades performance.
+
+PgBouncer sits between the application and PostgreSQL, multiplexing many client connections onto a small pool of real database connections. In **transaction mode**, PgBouncer assigns a real connection for the duration of a single transaction, then releases it back to the pool immediately. This lets 200+ clients share just 20 real PostgreSQL connections.
+
+### Docker Compose configuration
+
+The included `docker-compose.yml` runs `edoburu/pgbouncer` with:
+
+| Setting | Value | Notes |
+|---------|-------|-------|
+| `POOL_MODE` | `transaction` | Highest multiplexing; connection returned after each transaction |
+| `DEFAULT_POOL_SIZE` | `20` | Real connections to PostgreSQL per database/user pair |
+| `MAX_CLIENT_CONN` | `200` | Max simultaneous clients connecting to PgBouncer |
+| `AUTH_TYPE` | `md5` | Client authentication mode; upgrade to `scram-sha-256` in production |
+
+The server's `DATABASE_URL` points to PgBouncer (`pgbouncer:6432`) rather than PostgreSQL directly.
+
+### Session.py compatibility
+
+Transaction-mode pooling has one important constraint: **prepared statements cannot persist across transactions** because a different real connection may serve the next transaction. Remembr's `session.py` automatically detects PgBouncer in the URL and:
+
+1. Uses `NullPool` — SQLAlchemy does not maintain its own pool; PgBouncer is the pool.
+2. Passes `statement_cache_size=0` and `prepared_statement_cache_size=0` to asyncpg, disabling asyncpg's prepared statement cache.
+
+This detection is automatic. If you route through PgBouncer via a different hostname, set `USE_PGBOUNCER=true` in your environment.
+
+### Production tuning
+
+```bash
+# Tune for your workload — these are in the pgbouncer environment block:
+DEFAULT_POOL_SIZE=50          # if you have many DB cores available
+MAX_CLIENT_CONN=500           # if you run many API replicas
+POOL_MODE=session             # if you use PostgreSQL features that break in transaction mode
+                              # (e.g., advisory locks, LISTEN/NOTIFY, temp tables)
+```
+
+For production, also set:
+- `AUTH_TYPE=scram-sha-256` (requires pgbouncer 1.14+)
+- `SERVER_TLS_SSLMODE=require` if PostgreSQL TLS is enabled
+- Mount a custom `pgbouncer.ini` for advanced options
+
+### Bypassing PgBouncer
+
+To connect directly (e.g., for `alembic upgrade head` which uses DDL):
+
+```bash
+DATABASE_URL=postgresql+asyncpg://remembr:remembr@localhost:5432/remembr \
+  docker compose exec server alembic upgrade head
+```
+
+Alembic migrations should run against PostgreSQL directly (not through PgBouncer in transaction mode) because DDL statements and schema changes are incompatible with transaction-mode pooling.
 
 ---
 

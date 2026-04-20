@@ -1,9 +1,10 @@
 # =============================================================================
-# Remembr — Docker Compose (Self-Hosted)
+# Remembr — Docker Compose (Self-Hosted, Zero-Dependency)
 # =============================================================================
-# Start all services: docker-compose up -d
-# Run migrations:     docker-compose exec server alembic upgrade head
-# Stop services:      docker-compose down
+# First-time setup:  bash scripts/docker-init.sh
+# Day-to-day:        docker compose up -d
+# Stop:              docker compose down
+# Nuke volumes:      docker compose down -v
 # =============================================================================
 
 services:
@@ -28,6 +29,38 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 15s
+
+  # ---------------------------------------------------------------------------
+  # PgBouncer — Connection pooler (transaction mode)
+  # Routes DATABASE_URL traffic through a small connection pool so the
+  # FastAPI server can hold many open asyncpg connections cheaply.
+  # ---------------------------------------------------------------------------
+  pgbouncer:
+    image: edoburu/pgbouncer:latest
+    container_name: remembr-pgbouncer
+    restart: unless-stopped
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: remembr
+      DB_PASSWORD: remembr
+      DB_NAME: remembr
+      POOL_MODE: transaction
+      DEFAULT_POOL_SIZE: 20
+      MAX_CLIENT_CONN: 200
+      AUTH_TYPE: md5
+      SERVER_TLS_SSLMODE: disable
+    ports:
+      - "6432:6432"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h localhost -p 6432 -U remembr -d pgbouncer"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
       start_period: 10s
 
   # ---------------------------------------------------------------------------
@@ -44,6 +77,42 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 5s
+
+  # ---------------------------------------------------------------------------
+  # Ollama — Local embedding inference (no API key required)
+  # Pull the model on first run: docker compose run --rm ollama-init
+  # ---------------------------------------------------------------------------
+  ollama:
+    image: ollama/ollama:latest
+    container_name: remembr-ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:11434/api/tags || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  # ---------------------------------------------------------------------------
+  # Ollama Init — Pulls nomic-embed-text once, then exits.
+  # Runs automatically on `docker compose up -d` (restart: "no").
+  # Re-running is safe — ollama pull is idempotent.
+  # ---------------------------------------------------------------------------
+  ollama-init:
+    image: ollama/ollama:latest
+    container_name: remembr-ollama-init
+    restart: "no"
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    entrypoint: ["ollama", "pull", "nomic-embed-text"]
+    depends_on:
+      ollama:
+        condition: service_healthy
 
   # ---------------------------------------------------------------------------
   # Remembr Server — FastAPI application
@@ -59,20 +128,27 @@ services:
     env_file:
       - .env
     environment:
-      DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://remembr:remembr@postgres:5432/remembr}
+      DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://remembr:remembr@pgbouncer:6432/remembr}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+      EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-ollama}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}
+      OLLAMA_EMBEDDING_MODEL: ${OLLAMA_EMBEDDING_MODEL:-nomic-embed-text}
     depends_on:
-      postgres:
+      pgbouncer:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      ollama:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 15s
+      start_period: 20s
 
 volumes:
   postgres_data:
+    driver: local
+  ollama_data:
     driver: local

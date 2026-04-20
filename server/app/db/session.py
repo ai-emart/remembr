@@ -1,5 +1,6 @@
 """Database session management."""
 
+import os
 from collections.abc import AsyncGenerator
 
 from loguru import logger
@@ -14,17 +15,43 @@ from app.config import get_settings
 
 settings = get_settings()
 
-# Create async engine
-engine = create_async_engine(
-    settings.database_url.get_secret_value().replace("postgresql://", "postgresql+asyncpg://"),
-    echo=settings.log_level == "DEBUG",
-    pool_pre_ping=True,
-    pool_size=settings.db_pool_size,
-    max_overflow=settings.db_max_overflow,
-    pool_timeout=settings.db_pool_timeout,
-    pool_recycle=settings.db_pool_recycle,
-    connect_args={"statement_cache_size": 0},  # Required for Supabase transaction pooler
+_db_url = settings.database_url.get_secret_value().replace(
+    "postgresql://", "postgresql+asyncpg://"
 )
+
+# PgBouncer transaction-mode pooling requires:
+#   1. NullPool — SQLAlchemy must not hold open connections; pgbouncer owns the pool.
+#   2. statement_cache_size=0 — prepared statements cannot survive transaction boundaries.
+_use_pgbouncer = "pgbouncer" in _db_url.lower() or os.getenv(
+    "USE_PGBOUNCER", ""
+).lower() in {"1", "true", "yes"}
+
+_connect_args: dict = {
+    "statement_cache_size": 0,
+    "prepared_statement_cache_size": 0,
+}
+
+if _use_pgbouncer:
+    from sqlalchemy.pool import NullPool
+
+    logger.info("PgBouncer detected — using NullPool + disabled prepared statement cache")
+    engine = create_async_engine(
+        _db_url,
+        echo=settings.log_level == "DEBUG",
+        poolclass=NullPool,
+        connect_args=_connect_args,
+    )
+else:
+    engine = create_async_engine(
+        _db_url,
+        echo=settings.log_level == "DEBUG",
+        pool_pre_ping=True,
+        pool_size=settings.db_pool_size,
+        max_overflow=settings.db_max_overflow,
+        pool_timeout=settings.db_pool_timeout,
+        pool_recycle=settings.db_pool_recycle,
+        connect_args=_connect_args,
+    )
 
 # Create async session factory
 AsyncSessionLocal = async_sessionmaker(

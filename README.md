@@ -57,8 +57,9 @@ graph TD
 
     subgraph Storage["Storage"]
         PG["PostgreSQL + pgvector\nLong-term episodic memory"]
+        PB["PgBouncer\nConnection pooler"]
         RD["Redis\nShort-term cache"]
-        JN["Jina AI\nEmbeddings"]
+        EMB["Embeddings\nOllama / Jina / OpenAI / ST"]
     end
 
     LC & LG & CA & AU & LI & PA & OA & HS --> PY
@@ -67,16 +68,17 @@ graph TD
     AUTH --> MEM
     AUTH --> SES
     AUTH --> RL
-    MEM & SES --> PG
+    MEM & SES --> PB
+    PB --> PG
     MEM & SES --> RD
-    MEM --> JN
+    MEM --> EMB
 ```
 
 **How it works:**
 - AI frameworks connect via native adapters (Python or TypeScript SDK)
 - All requests pass through JWT authentication and rate limiting
 - Memory API handles semantic storage and hybrid search via 
-  pgvector + Jina embeddings
+  pgvector + pluggable embeddings (Ollama by default, no API key needed)
 - Sessions API manages conversation windows and context scoping
 - PostgreSQL stores long-term episodic memory with vector similarity 
   search; Redis caches short-term conversation windows
