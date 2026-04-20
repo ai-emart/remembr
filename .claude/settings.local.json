@@ -1,0 +1,23 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm audit *)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(python -m ruff check --fix app/)",
+      "Bash(python -m ruff format app/)",
+      "Bash(python -m pytest --tb=short -q)",
+      "Bash(python -c \"from app.api.v1.memory import MemoryQueryRequest; print\\('OK'\\)\")",
+      "Bash(python -m pytest tests/test_episodic.py tests/test_memory_query.py tests/test_config.py tests/test_scoping.py tests/test_scoping_unit.py -v --tb=short)",
+      "Bash(python -m pytest tests/test_config.py tests/test_episodic.py tests/test_memory_query.py tests/test_scoping_unit.py tests/test_error_handling.py tests/test_rate_limit_config.py -v --tb=short)",
+      "Bash(DATABASE_URL=postgresql://test:test@localhost/test python -c \"from app.api.v1.memory import MemoryQueryRequest; print\\('OK'\\)\")",
+      "Bash(python -m pytest tests/test_security_authz.py -v --tb=long)",
+      "Bash(python -m pytest tests/test_security_authz.py -v --tb=short)",
+      "Bash(python -m pytest tests/test_security_authz.py -v)",
+      "Bash(python -c \"import inspect, slowapi.middleware; print\\(inspect.getsource\\(slowapi.middleware._check_limits\\)\\)\")",
+      "Bash(python -c \"import redis.exceptions; t = redis.exceptions.TimeoutError\\(\\); print\\(type\\(t\\).__mro__\\)\")",
+      "Bash(python -c \"import inspect, slowapi.middleware; print\\(inspect.getsource\\(slowapi.middleware.SlowAPIMiddleware.dispatch\\)\\)\")",
+      "Bash(python -c \"import inspect, slowapi.extension; print\\(inspect.getsource\\(slowapi.extension._rate_limit_exceeded_handler\\)\\)\")"
+    ]
+  }
+}

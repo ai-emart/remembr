@@ -94,7 +94,6 @@ def setup_rate_limiting(app) -> None:
     if not _SLOWAPI_AVAILABLE:
         return
 
-    # Custom error handler that safely handles TimeoutError
     async def custom_rate_limit_handler(request: Request, exc: Exception):
         detail = getattr(exc, "detail", str(exc))
         request_id = getattr(request.state, "request_id", "unknown")
@@ -113,5 +112,37 @@ def setup_rate_limiting(app) -> None:
             status_code=429,
         )
 
+    def _handle_storage_error(request: Request, exc: Exception) -> None:
+        """Fail open when Redis is unavailable — let auth decide the response."""
+        logger.warning(f"Rate limiter storage unavailable ({type(exc).__name__}), failing open")
+        return None
+
     app.add_exception_handler(RateLimitExceeded, custom_rate_limit_handler)
+
+    # Register handlers for Redis-specific exceptions (exact type match used by slowapi)
+    try:
+        from redis.exceptions import (
+            ConnectionError as RedisConnectionError,
+            TimeoutError as RedisTimeoutError,
+        )
+
+        app.add_exception_handler(RedisTimeoutError, _handle_storage_error)
+        app.add_exception_handler(RedisConnectionError, _handle_storage_error)
+    except ImportError:
+        pass
+
+    # Patch sync_check_limits to fail open for any unhandled storage error
+    import slowapi.middleware as _slowapi_middleware
+
+    _orig_sync_check_limits = _slowapi_middleware.sync_check_limits
+
+    def _safe_sync_check_limits(limiter, request, handler, app_):
+        try:
+            return _orig_sync_check_limits(limiter, request, handler, app_)
+        except Exception:
+            logger.warning("Rate limiter storage error in sync_check_limits, failing open")
+            return None, False
+
+    _slowapi_middleware.sync_check_limits = _safe_sync_check_limits
+
     app.add_middleware(SlowAPIMiddleware)

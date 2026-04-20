@@ -24,42 +24,26 @@ class EmbeddingService:
         self.base_url = "https://api.jina.ai/v1/embeddings"
         self.batch_size = getattr(self.settings, "embedding_batch_size", 100)
         self.max_retries = 3
-        self.timeout = 30.0
 
-    async def generate(
-        self,
-        text: str,
-        task: Literal["retrieval.passage", "retrieval.query"] = "retrieval.passage",
-    ) -> list[float]:
+    async def generate_embedding(self, text: str) -> tuple[list[float], int]:
         """
         Generate embedding for a single text.
 
-        Args:
-            text: Text to embed
-            task: Task type - "retrieval.passage" for storing,
-                  "retrieval.query" for searching
+        Returns:
+            Tuple of (embedding vector, dimensions)
+        """
+        vectors = await self._request_with_retry([text], timeout=30.0)
+        vector = vectors[0]
+        return vector, len(vector)
+
+    async def generate_embeddings_batch(self, texts: list[str]) -> list[tuple[list[float], int]]:
+        """
+        Generate embeddings for multiple texts.
+
+        Automatically splits requests larger than 2048 items.
 
         Returns:
-            1024-dimensional embedding vector
-        """
-        embeddings = await self.generate_batch([text], task=task)
-        return embeddings[0]
-
-    async def generate_batch(
-        self,
-        texts: list[str],
-        task: Literal["retrieval.passage", "retrieval.query"] = "retrieval.passage",
-    ) -> list[list[float]]:
-        """
-        Generate embeddings for multiple texts in batch.
-
-        Args:
-            texts: List of texts to embed (max 2048 per call)
-            task: Task type - "retrieval.passage" for storing,
-                  "retrieval.query" for searching
-
-        Returns:
-            List of 1024-dimensional embedding vectors
+            List of (embedding vector, dimensions) tuples
         """
         if not texts:
             return []
@@ -69,18 +53,25 @@ class EmbeddingService:
                 f"Batch size {len(texts)} exceeds Jina limit of 2048, "
                 "splitting into multiple requests"
             )
-            # Split into chunks and process
-            all_embeddings = []
+            all_results: list[tuple[list[float], int]] = []
             for i in range(0, len(texts), 2048):
                 chunk = texts[i : i + 2048]
-                chunk_embeddings = await self.generate_batch(chunk, task=task)
-                all_embeddings.extend(chunk_embeddings)
-            return all_embeddings
+                all_results.extend(await self.generate_embeddings_batch(chunk))
+            return all_results
 
-        # Make API request with retry logic
+        vectors = await self._request_with_retry(texts, timeout=60.0)
+        return [(v, len(v)) for v in vectors]
+
+    async def _request_with_retry(
+        self,
+        texts: list[str],
+        timeout: float,
+        task: Literal["retrieval.passage", "retrieval.query"] = "retrieval.passage",
+    ) -> list[list[float]]:
+        """Make API request with exponential backoff retry on 429 and 5xx."""
         for attempt in range(self.max_retries):
             try:
-                async with httpx.AsyncClient(timeout=self.timeout) as client:
+                async with httpx.AsyncClient(timeout=timeout) as client:
                     response = await client.post(
                         self.base_url,
                         headers={
@@ -104,7 +95,6 @@ class EmbeddingService:
                         return embeddings
 
                     elif response.status_code == 429:
-                        # Rate limit - exponential backoff
                         wait_time = 2**attempt
                         logger.warning(
                             f"Rate limit hit, retrying in {wait_time}s "
@@ -114,7 +104,6 @@ class EmbeddingService:
                         continue
 
                     elif response.status_code >= 500:
-                        # Server error - retry
                         wait_time = 2**attempt
                         logger.warning(
                             f"Server error {response.status_code}, "
@@ -125,7 +114,6 @@ class EmbeddingService:
                         continue
 
                     else:
-                        # Client error - don't retry
                         logger.error(f"Jina API error {response.status_code}: {response.text}")
                         raise ValueError(f"Jina API error {response.status_code}: {response.text}")
 
@@ -150,16 +138,7 @@ class EmbeddingService:
 
     @staticmethod
     def cosine_similarity(a: list[float], b: list[float]) -> float:
-        """
-        Calculate cosine similarity between two vectors.
-
-        Args:
-            a: First vector
-            b: Second vector
-
-        Returns:
-            Cosine similarity score between -1 and 1
-        """
+        """Calculate cosine similarity between two vectors."""
         if len(a) != len(b):
             raise ValueError("Vectors must have the same length")
 

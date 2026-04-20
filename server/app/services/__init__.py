@@ -17,7 +17,7 @@ from app.services.auth import (
     verify_password,
 )
 from app.services.cache import CacheService
-from app.services.embedding_service import EmbeddingService
+from app.services.embedding import EmbeddingService
 
 __all__ = [
     "CacheService",

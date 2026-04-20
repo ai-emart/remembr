@@ -1,7 +1,5 @@
 """Memory and session management endpoints."""
 
-from __future__ import annotations
-
 from datetime import UTC, datetime
 from time import perf_counter
 from typing import Annotated, Any
@@ -251,23 +249,53 @@ class MemoryQueryEngine:
         results: list[MemorySearchResult] = []
 
         if request.query:
-            semantic = await self.episodic.search_semantic(
-                scope=scope,
-                query=request.query,
-                limit=request.limit,
+            has_filters = any(
+                [request.tags, request.role, request.from_time, request.to_time, request.session_id]
             )
+            if has_filters:
+                try:
+                    semantic = await self.episodic.search_hybrid(
+                        scope=scope,
+                        query=request.query,
+                        tags=request.tags,
+                        from_time=request.from_time,
+                        to_time=request.to_time,
+                        role=request.role,
+                        session_id=request.session_id,
+                        limit=request.limit,
+                    )
+                except Exception:
+                    semantic = await self.episodic.search_semantic(
+                        scope=scope,
+                        query=request.query,
+                        limit=request.limit,
+                    )
+                    _filtered = []
+                    for item in semantic:
+                        episode = item.episode
+                        if request.session_id and episode.session_id != request.session_id:
+                            continue
+                        if request.role and episode.role != request.role:
+                            continue
+                        if request.tags and not set(request.tags).intersection(
+                            set(episode.tags or [])
+                        ):
+                            continue
+                        if request.from_time and episode.created_at < request.from_time:
+                            continue
+                        if request.to_time and episode.created_at > request.to_time:
+                            continue
+                        _filtered.append(item)
+                    semantic = _filtered
+            else:
+                semantic = await self.episodic.search_semantic(
+                    scope=scope,
+                    query=request.query,
+                    limit=request.limit,
+                )
+
             for item in semantic:
                 episode = item.episode
-                if request.session_id and episode.session_id != request.session_id:
-                    continue
-                if request.role and episode.role != request.role:
-                    continue
-                if request.tags and not set(request.tags).intersection(set(episode.tags or [])):
-                    continue
-                if request.from_time and episode.created_at < request.from_time:
-                    continue
-                if request.to_time and episode.created_at > request.to_time:
-                    continue
                 results.append(
                     MemorySearchResult(
                         episode_id=str(episode.id),

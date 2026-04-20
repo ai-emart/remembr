@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.db.session import AsyncSessionLocal
 from app.models import Embedding, Episode
 from app.repositories import episode_repo
-from app.services.embedding_service import EmbeddingService
+from app.services.embedding import EmbeddingService
 from app.services.scoping import MemoryScope
 
 
@@ -225,6 +225,7 @@ class EpisodicMemory:
         from_time: datetime | None = None,
         to_time: datetime | None = None,
         role: str | None = None,
+        session_id: uuid.UUID | None = None,
         limit: int = 10,
         score_threshold: float = 0.65,
     ) -> list[EpisodeSearchResult]:
@@ -267,6 +268,7 @@ class EpisodicMemory:
               AND (:from_time IS NULL OR e.created_at >= :from_time)
               AND (:to_time IS NULL OR e.created_at <= :to_time)
               AND (:role IS NULL OR e.role = :role)
+              AND (:session_id IS NULL OR e.session_id = :session_id)
             ORDER BY sc.similarity_score DESC
             LIMIT :limit
             """
@@ -278,12 +280,12 @@ class EpisodicMemory:
                 "team_id": _as_uuid(scope.team_id),
                 "user_id": _as_uuid(scope.user_id),
                 "agent_id": _as_uuid(scope.agent_id),
-                "query_vector": vector_literal,
                 "score_threshold": score_threshold,
                 "tags": tags,
                 "from_time": from_time,
                 "to_time": to_time,
                 "role": role,
+                "session_id": session_id,
                 "limit": limit,
             },
         )
