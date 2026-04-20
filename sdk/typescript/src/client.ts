@@ -3,6 +3,9 @@ import { RemembrHttp } from './http';
 import {
   CheckpointInfo,
   Episode,
+  ExportParams,
+  IdempotencyOptions,
+  JsonExportResult,
   ListSessionsParams,
   MemoryQueryResult,
   RemembrConfig,
@@ -48,10 +51,15 @@ export class RemembrClient {
   /**
    * Create a new memory session.
    * @param metadata Optional metadata dictionary stored alongside the created session.
+   * @param options Optional idempotency options.
    */
-  async createSession(metadata?: Record<string, unknown>): Promise<Session> {
+  async createSession(
+    metadata?: Record<string, unknown>,
+    options?: IdempotencyOptions
+  ): Promise<Session> {
     const data = await this.http.request<Session>('POST', '/sessions', {
       body: { metadata: metadata ?? {} },
+      headers: options?.idempotencyKey ? { 'Idempotency-Key': options.idempotencyKey } : undefined,
     });
     return data;
   }
@@ -115,8 +123,9 @@ export class RemembrClient {
   /**
    * Store a memory episode.
    * @param params Memory payload to persist.
+   * @param options Optional idempotency options.
    */
-  async store(params: StoreMemoryParams): Promise<Episode> {
+  async store(params: StoreMemoryParams, options?: IdempotencyOptions): Promise<Episode> {
     this.requireNonEmpty(params.content, 'content');
     const role = params.role ?? 'user';
     this.requireNonEmpty(role, 'role');
@@ -133,6 +142,7 @@ export class RemembrClient {
         tags: params.tags ?? [],
         metadata: params.metadata ?? {},
       },
+      headers: options?.idempotencyKey ? { 'Idempotency-Key': options.idempotencyKey } : undefined,
     });
 
     return {
@@ -267,6 +277,107 @@ export class RemembrClient {
   async forgetUser(userId: string): Promise<ForgetUserResponse> {
     this.requireNonEmpty(userId, 'userId');
     return this.http.request<ForgetUserResponse>('DELETE', `/memory/user/${userId}`);
+  }
+
+  /**
+   * Export all episodes for the authenticated scope.
+   *
+   * @param params Export options (format, date range, session, include_deleted).
+   * @returns An `AsyncIterable<Record<string, unknown>>` for JSON, or a `Blob` for CSV.
+   *
+   * @example JSON streaming
+   * ```ts
+   * for await (const episode of await client.export({ format: 'json' })) {
+   *   console.log(episode.content);
+   * }
+   * ```
+   *
+   * @example CSV download
+   * ```ts
+   * const blob = await client.export({ format: 'csv' }) as Blob;
+   * ```
+   */
+  async export(params: ExportParams = {}): Promise<JsonExportResult | Blob> {
+    const format = params.format ?? 'json';
+    const url = this.buildExportUrl(params);
+
+    const headers: Record<string, string> = {
+      Accept: format === 'csv' ? 'text/csv' : 'application/json',
+      'Content-Type': 'application/json',
+    };
+    if (this.http['apiKey']) {
+      headers.Authorization = `Bearer ${this.http['apiKey']}`;
+    }
+
+    const baseUrl = this.http['baseUrl'];
+    const fullUrl = `${baseUrl}${url.startsWith('/') ? url : `/${url}`}`;
+
+    if (format === 'csv') {
+      const response = await fetch(fullUrl, { method: 'GET', headers });
+      if (!response.ok) {
+        throw new ServerError(`Export failed with status ${response.status}`);
+      }
+      return response.blob();
+    }
+
+    // JSON: return an AsyncIterable that streams and parses objects
+    return this.streamJsonExport(fullUrl, headers);
+  }
+
+  private buildExportUrl(params: ExportParams): string {
+    const qs = new URLSearchParams();
+    qs.set('format', params.format ?? 'json');
+    if (params.fromDate) qs.set('from_date', params.fromDate.toISOString());
+    if (params.toDate) qs.set('to_date', params.toDate.toISOString());
+    if (params.sessionId) qs.set('session_id', params.sessionId);
+    if (params.includeDeleted) qs.set('include_deleted', 'true');
+    return `/export?${qs.toString()}`;
+  }
+
+  private async *streamJsonExport(
+    url: string,
+    headers: Record<string, string>
+  ): AsyncIterable<Record<string, unknown>> {
+    const response = await fetch(url, { method: 'GET', headers });
+    if (!response.ok || !response.body) {
+      throw new ServerError(`Export failed with status ${response.status}`);
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = '';
+    let depth = 0;
+    let inStr = false;
+    let escapeNext = false;
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value, { stream: true });
+        for (const ch of chunk) {
+          if (escapeNext) { buf += ch; escapeNext = false; continue; }
+          if (ch === '\\' && inStr) { buf += ch; escapeNext = true; continue; }
+          if (ch === '"') inStr = !inStr;
+          if (!inStr) {
+            if (ch === '{') depth += 1;
+            else if (ch === '}') depth -= 1;
+          }
+          buf += ch;
+
+          if (depth === 0 && buf.trim().startsWith('{')) {
+            const objStr = buf.trim().replace(/,$/, '').trim();
+            if (objStr) {
+              try { yield JSON.parse(objStr) as Record<string, unknown>; } catch { /* skip */ }
+            }
+            buf = '';
+          }
+        }
+      }
+    } finally {
+      reader.releaseLock();
+    }
   }
 
   private getApiKeyFromEnv(): string | undefined {

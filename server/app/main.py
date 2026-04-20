@@ -248,6 +248,11 @@ def create_app() -> FastAPI:
             request_id=request_id,
         )
 
+    # Idempotency middleware — runs after auth context so org/user info is available
+    from app.middleware.idempotency import idempotency_middleware
+
+    app.middleware("http")(idempotency_middleware)
+
     # Enable API rate limiting
     setup_rate_limiting(app)
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import os
 from datetime import datetime
-from typing import Any
+from typing import Any, AsyncIterator
 
 import httpx
 from tenacity import AsyncRetrying, retry_if_exception_type, stop_after_attempt, wait_exponential
@@ -73,6 +73,7 @@ class RemembrClient:
         *,
         params: dict[str, Any] | None = None,
         json: dict[str, Any] | None = None,
+        idempotency_key: str | None = None,
     ) -> dict[str, Any]:
         """Perform a raw API request and return the `data` payload.
 
@@ -86,6 +87,9 @@ class RemembrClient:
             The deserialized response payload (typically the API `data` object).
         """
         client = await self._ensure_client()
+        extra_headers: dict[str, str] = {}
+        if idempotency_key is not None:
+            extra_headers["Idempotency-Key"] = idempotency_key
 
         try:
             async for attempt in AsyncRetrying(
@@ -95,7 +99,9 @@ class RemembrClient:
                 reraise=True,
             ):
                 with attempt:
-                    response = await client.request(method=method, url=path, params=params, json=json)
+                    response = await client.request(
+                        method=method, url=path, params=params, json=json, headers=extra_headers
+                    )
                     if response.status_code == 429 or 500 <= response.status_code <= 599:
                         exc = self._to_exception(response)
                         raise _RetryableServerError(
@@ -169,17 +175,22 @@ class RemembrClient:
         """
         return asyncio.run(self.arequest(method, path, params=params, json=json))
 
-    async def create_session(self, metadata: dict[str, Any] | None = None) -> Session:
+    async def create_session(
+        self,
+        metadata: dict[str, Any] | None = None,
+        idempotency_key: str | None = None,
+    ) -> Session:
         """Create a new memory session.
 
         Args:
             metadata: Optional metadata dictionary stored alongside the created session.
+            idempotency_key: Optional idempotency key to make this request safe to retry.
 
         Returns:
             A :class:`~remembr.models.Session` object describing the newly created session.
         """
         payload = {"metadata": metadata or {}}
-        data = await self.arequest("POST", "/sessions", json=payload)
+        data = await self.arequest("POST", "/sessions", json=payload, idempotency_key=idempotency_key)
         return Session.model_validate(data)
 
     async def get_session(self, session_id: str) -> Session:
@@ -246,6 +257,7 @@ class RemembrClient:
         session_id: str | None = None,
         tags: list[str] | None = None,
         metadata: dict[str, Any] | None = None,
+        idempotency_key: str | None = None,
     ) -> Episode:
         """Store a memory episode.
 
@@ -255,6 +267,7 @@ class RemembrClient:
             session_id: Optional session ID to associate with the episode.
             tags: Optional list of string tags.
             metadata: Optional metadata dictionary for the episode.
+            idempotency_key: Optional idempotency key to make this request safe to retry.
 
         Returns:
             An :class:`~remembr.models.Episode` describing the stored memory.
@@ -273,7 +286,7 @@ class RemembrClient:
         if session_id:
             payload["session_id"] = session_id
 
-        data = await self.arequest("POST", "/memory", json=payload)
+        data = await self.arequest("POST", "/memory", json=payload, idempotency_key=idempotency_key)
         return Episode.model_validate(
             {
                 "episode_id": data.get("episode_id"),
@@ -438,6 +451,92 @@ class RemembrClient:
         """
         self._require_non_empty(user_id, "user_id")
         return await self.arequest("DELETE", f"/memory/user/{user_id}")
+
+    async def export(
+        self,
+        format: str = "json",
+        from_date: datetime | None = None,
+        to_date: datetime | None = None,
+        session_id: str | None = None,
+        include_deleted: bool = False,
+    ) -> AsyncIterator[dict[str, Any]] | bytes:
+        """Export all episodes for the authenticated scope.
+
+        Args:
+            format: ``"json"`` (default) returns an ``AsyncIterator[dict]``; ``"csv"`` returns ``bytes``.
+            from_date: Optional lower bound for ``created_at``.
+            to_date: Optional upper bound for ``created_at``.
+            session_id: Limit to a single session.
+            include_deleted: Include soft-deleted episodes (default: False).
+
+        Returns:
+            An :class:`AsyncIterator[dict]` for JSON, or ``bytes`` for CSV.
+        """
+        if format not in ("json", "csv"):
+            raise ValueError("format must be 'json' or 'csv'")
+
+        params: dict[str, Any] = {"format": format, "include_deleted": str(include_deleted).lower()}
+        if from_date is not None:
+            params["from_date"] = from_date.isoformat()
+        if to_date is not None:
+            params["to_date"] = to_date.isoformat()
+        if session_id is not None:
+            params["session_id"] = session_id
+
+        client = await self._ensure_client()
+        url = "/export"
+        qs = "&".join(f"{k}={v}" for k, v in params.items())
+        full_url = f"{url}?{qs}" if qs else url
+
+        if format == "csv":
+            response = await client.get(full_url)
+            response.raise_for_status()
+            return response.content
+
+        # JSON: return an async iterator that streams objects
+        return self._stream_json_export(client, full_url)
+
+    async def _stream_json_export(
+        self, client: httpx.AsyncClient, url: str
+    ) -> AsyncIterator[dict[str, Any]]:
+        """Async generator that yields one episode dict per item in the streamed JSON array."""
+        import json as _json
+
+        async with client.stream("GET", url) as response:
+            response.raise_for_status()
+            buf = ""
+            depth = 0
+            in_str = False
+            escape_next = False
+
+            async for chunk in response.aiter_text():
+                for ch in chunk:
+                    if escape_next:
+                        buf += ch
+                        escape_next = False
+                        continue
+                    if ch == "\\" and in_str:
+                        buf += ch
+                        escape_next = True
+                        continue
+                    if ch == '"':
+                        in_str = not in_str
+                    if not in_str:
+                        if ch == "{":
+                            depth += 1
+                        elif ch == "}":
+                            depth -= 1
+
+                    buf += ch
+
+                    if depth == 0 and buf.strip().startswith("{"):
+                        obj_str = buf.strip().rstrip(",").strip()
+                        if obj_str:
+                            try:
+                                yield _json.loads(obj_str)
+                            except _json.JSONDecodeError:
+                                pass
+                        buf = ""
 
     @staticmethod
     def _require_non_empty(value: str, param_name: str) -> None:

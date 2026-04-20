@@ -218,6 +218,75 @@ docker compose down -v
 
 ---
 
+---
+
+## Idempotent Writes
+
+Add `Idempotency-Key` to any POST/PUT/PATCH so retries never create duplicates.
+The server caches the response for 24 hours and replays it verbatim on repeat requests.
+
+```python
+import uuid
+
+async with RemembrClient(api_key=API_KEY) as client:
+    idem_key = str(uuid.uuid4())          # generate once, store in your DB
+
+    # Safe to retry — only executes once
+    episode = await client.store(
+        "User confirmed subscription upgrade",
+        role="user",
+        idempotency_key=idem_key,
+    )
+```
+
+```bash
+curl -X POST "$BASE_URL/memory" \
+  -H "Authorization: Bearer $API_KEY" \
+  -H "Idempotency-Key: my-unique-op-001" \
+  -H "Content-Type: application/json" \
+  -d '{"role":"user","content":"User confirmed subscription upgrade"}'
+```
+
+---
+
+## Data Export
+
+Export your full memory dataset as JSON or CSV — streamed without buffering:
+
+```python
+# JSON streaming (no memory spike for large exports)
+async with RemembrClient(api_key=API_KEY) as client:
+    async for episode in await client.export(format="json"):
+        print(episode["content"])
+
+# CSV download
+async with RemembrClient(api_key=API_KEY) as client:
+    csv_bytes = await client.export(format="csv")
+    with open("export.csv", "wb") as f:
+        f.write(csv_bytes)
+
+# Filtered export
+async with RemembrClient(api_key=API_KEY) as client:
+    from datetime import datetime, timezone
+    async for episode in await client.export(
+        format="json",
+        from_date=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        session_id="<session-id>",
+    ):
+        print(episode)
+```
+
+```bash
+# Full JSON export
+curl "$BASE_URL/export" -H "Authorization: Bearer $API_KEY" --output export.json
+
+# CSV with date filter
+curl "$BASE_URL/export?format=csv&from_date=2026-01-01T00:00:00Z" \
+  -H "Authorization: Bearer $API_KEY" --output export.csv
+```
+
+---
+
 ## Next Steps
 
 - Read the [README](README.md) for full documentation

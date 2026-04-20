@@ -19,6 +19,43 @@ Errors follow a structured shape with `message`, optional `details.code`, and `r
 
 ---
 
+## Idempotency
+
+POST, PUT, and PATCH requests accept an optional `Idempotency-Key` header.  
+When present, the server caches the response for **24 hours** and replays it
+identically for any subsequent request carrying the same key from the same
+authenticated identity — without re-executing the route.
+
+**Rules:**
+- Key must be **non-empty** and **≤ 255 characters**.
+- Only **2xx** responses are cached. Error responses are never replayed.
+- Replayed responses include the header `X-Idempotent-Replay: true`.
+- Keys are scoped to the caller — two different API keys cannot collide even if
+  they send the same key string.
+
+**When to use it:**
+Use idempotency keys on any write that must not be duplicated — storing an
+episode after a transient network failure, creating a session on retry, etc.
+
+```bash
+# First call — executes the route and caches the response
+curl -X POST "$BASE_URL/memory" \
+  -H "Authorization: Bearer $API_KEY" \
+  -H "Idempotency-Key: my-unique-operation-id-001" \
+  -H "Content-Type: application/json" \
+  -d '{"role":"user","content":"Hello, world"}'
+
+# Second call with the same key — returns the cached response immediately
+curl -X POST "$BASE_URL/memory" \
+  -H "Authorization: Bearer $API_KEY" \
+  -H "Idempotency-Key: my-unique-operation-id-001" \
+  -H "Content-Type: application/json" \
+  -d '{"role":"user","content":"Hello, world"}'
+# → response header: X-Idempotent-Replay: true
+```
+
+---
+
 ## Auth
 
 ### POST `/auth/register`
@@ -480,6 +517,54 @@ Revoke API key.
 ```bash
 curl -X DELETE "$BASE_URL/api-keys/$KEY_ID" -H "Authorization: Bearer $ACCESS_TOKEN"
 ```
+
+---
+
+## Export
+
+### GET `/export`
+Stream all episodes for the authenticated scope as JSON or CSV without buffering
+the entire dataset in memory.
+
+**Auth required:** API key or JWT bearer token
+
+**Query parameters**
+
+| Parameter        | Type      | Default | Description |
+|------------------|-----------|---------|-------------|
+| `format`         | `json\|csv` | `json`  | Output format. |
+| `from_date`      | ISO 8601  | —       | Lower bound for `created_at`. |
+| `to_date`        | ISO 8601  | —       | Upper bound for `created_at`. |
+| `session_id`     | UUID      | —       | Limit to a single session. |
+| `include_deleted`| bool      | `false` | Include soft-deleted episodes. |
+
+**JSON response** — streaming `application/json` array, one object per episode:
+```json
+[
+  {"id":"…","session_id":"…","role":"user","content":"…","tags":[],"metadata":{},"created_at":"…","embedding_status":"ready"},
+  …
+]
+```
+
+**CSV response** — streaming `text/csv` with headers:
+```
+id,session_id,role,content,tags,metadata,created_at,embedding_status
+```
+Tags are semicolon-joined; metadata is JSON-encoded.
+
+```bash
+# JSON export
+curl "$BASE_URL/export" \
+  -H "Authorization: Bearer $API_KEY" \
+  --output export.json
+
+# CSV export with date filter
+curl "$BASE_URL/export?format=csv&from_date=2026-01-01T00:00:00Z" \
+  -H "Authorization: Bearer $API_KEY" \
+  --output export.csv
+```
+
+---
 
 ### GET `/health`
 Service health status.

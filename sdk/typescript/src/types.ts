@@ -141,3 +141,26 @@ export interface ForgetUserParams {
   /** User identifier to purge. */
   userId: string;
 }
+
+/** Parameters for exporting memory data. */
+export interface ExportParams {
+  /** Output format. `json` returns an AsyncIterable of episode objects; `csv` returns a Blob. */
+  format?: 'json' | 'csv';
+  /** Optional lower bound for created_at (ISO 8601). */
+  fromDate?: Date;
+  /** Optional upper bound for created_at (ISO 8601). */
+  toDate?: Date;
+  /** Limit export to a single session. */
+  sessionId?: string;
+  /** Include soft-deleted episodes (default: false). */
+  includeDeleted?: boolean;
+}
+
+/** JSON export result — an async iterable of episode objects. */
+export type JsonExportResult = AsyncIterable<Record<string, unknown>>;
+
+/** Idempotency options for mutating write methods. */
+export interface IdempotencyOptions {
+  /** Optional idempotency key (≤ 255 chars). Same key → same response for 24 h. */
+  idempotencyKey?: string;
+}
