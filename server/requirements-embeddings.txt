@@ -1,0 +1,11 @@
+# Optional embedding provider dependencies
+# Install all: pip install -r requirements-embeddings.txt
+# Or install only what you need.
+
+# sentence-transformers (default provider — local, no API key needed)
+sentence-transformers>=2.7.0
+
+# OpenAI (EMBEDDING_PROVIDER=openai)
+openai>=1.30.0
+
+# Jina AI and Ollama use httpx, which is already in requirements.txt

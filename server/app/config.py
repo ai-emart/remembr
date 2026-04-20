@@ -57,15 +57,48 @@ class Settings(BaseSettings):
         description="Deployment environment",
     )
 
-    # Jina AI Embeddings
-    jina_api_key: SecretStr = Field(
-        ...,
-        description="Jina AI API key for embedding generation",
+    # Embedding provider selection
+    embedding_provider: Literal["jina", "ollama", "openai", "sentence_transformers"] = Field(
+        default="sentence_transformers",
+        description="Embedding backend to use",
+    )
+
+    # Jina AI (optional — only required when embedding_provider=jina)
+    jina_api_key: SecretStr | None = Field(
+        default=None,
+        description="Jina AI API key (required when embedding_provider=jina)",
     )
     jina_embedding_model: str = Field(
         default="jina-embeddings-v3",
         description="Jina embedding model to use",
     )
+
+    # Ollama (local)
+    ollama_base_url: str = Field(
+        default="http://localhost:11434",
+        description="Ollama server base URL",
+    )
+    ollama_embedding_model: str = Field(
+        default="nomic-embed-text",
+        description="Ollama embedding model to use",
+    )
+
+    # OpenAI (optional — only required when embedding_provider=openai)
+    openai_api_key: SecretStr | None = Field(
+        default=None,
+        description="OpenAI API key (required when embedding_provider=openai)",
+    )
+    openai_embedding_model: str = Field(
+        default="text-embedding-3-small",
+        description="OpenAI embedding model to use",
+    )
+
+    # Sentence-Transformers (local, no API key needed)
+    sentence_transformers_model: str = Field(
+        default="all-MiniLM-L6-v2",
+        description="Sentence-Transformers model name",
+    )
+
     embedding_batch_size: int = Field(
         default=100,
         description="Batch size for embedding generation",
@@ -179,7 +212,6 @@ def get_test_settings() -> Settings:
         database_url=SecretStr(test_db_url),
         redis_url=settings.redis_url,
         secret_key=settings.secret_key,
-        jina_api_key=settings.jina_api_key,
         environment="local",
         log_level="DEBUG",
     )

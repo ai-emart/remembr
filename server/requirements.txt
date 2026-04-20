@@ -18,3 +18,7 @@ pyjwt>=2.8.0
 slowapi>=0.1.9
 email-validator
 tiktoken
+
+# Embedding providers — install what you need
+# pip install -r requirements-embeddings.txt  (all extras)
+# or install individually: sentence-transformers / openai / httpx (Jina/Ollama already use httpx)

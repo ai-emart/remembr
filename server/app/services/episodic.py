@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.db.session import AsyncSessionLocal
 from app.models import Embedding, Episode
 from app.repositories import episode_repo
-from app.services.embedding import EmbeddingService
+from app.services.embeddings import EmbeddingProvider, get_embedding_provider
 from app.services.scoping import MemoryScope
 
 
@@ -64,12 +64,14 @@ class EpisodicMemory:
     def __init__(
         self,
         db: AsyncSession,
-        embedding_service: EmbeddingService | None = None,
         session_factory: async_sessionmaker[AsyncSession] | None = None,
     ) -> None:
         self.db = db
-        self.embedding_service = embedding_service or EmbeddingService()
         self.session_factory = session_factory or AsyncSessionLocal
+
+    @property
+    def _provider(self) -> EmbeddingProvider:
+        return get_embedding_provider()
 
     async def log(
         self,
@@ -168,7 +170,7 @@ class EpisodicMemory:
         score_threshold: float = 0.7,
     ) -> list[EpisodeSearchResult]:
         """Run semantic search against episode embeddings within scope."""
-        query_vector, _ = await self.embedding_service.generate_embedding(query)
+        query_vector, _ = await self._provider.generate_embedding(query)
         vector_literal = _to_pgvector_literal(query_vector)
 
         sql = text(
@@ -230,7 +232,7 @@ class EpisodicMemory:
         score_threshold: float = 0.65,
     ) -> list[EpisodeSearchResult]:
         """Run one-roundtrip semantic + metadata search using a CTE."""
-        query_vector, _ = await self.embedding_service.generate_embedding(query)
+        query_vector, _ = await self._provider.generate_embedding(query)
         vector_literal = _to_pgvector_literal(query_vector)
 
         sql = text(
@@ -318,8 +320,9 @@ class EpisodicMemory:
         content: str,
     ) -> None:
         """Background task: create embedding and persist to embeddings table."""
+        provider = self._provider
         try:
-            vector, dimensions = await self.embedding_service.generate_embedding(content)
+            vector, dimensions = await provider.generate_embedding(content)
         except Exception:
             logger.exception("Failed to generate episode embedding", episode_id=str(episode_id))
             return
@@ -338,7 +341,7 @@ class EpisodicMemory:
                     org_id=episode.org_id,
                     episode_id=episode.id,
                     content=content,
-                    model=self.embedding_service.model,
+                    model=provider.model,
                     dimensions=dimensions,
                     vector=vector,
                 )

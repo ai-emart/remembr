@@ -4,13 +4,44 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime
-from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
 
+from app.services.embeddings import EmbeddingProvider, set_embedding_provider_override
 from app.services.episodic import EpisodicMemory
 from app.services.scoping import MemoryScope
+
+
+class _FakeProvider(EmbeddingProvider):
+    """Minimal fake provider for tests."""
+
+    def __init__(self, vector: list[float] | None = None) -> None:
+        self._vector = vector or [0.1, 0.2]
+        self._generate = AsyncMock(return_value=(self._vector, len(self._vector)))
+
+    @property
+    def model(self) -> str:
+        return "fake-model"
+
+    @property
+    def dimensions(self) -> int | None:
+        return len(self._vector)
+
+    async def generate_embedding(self, text: str) -> tuple[list[float], int]:
+        return await self._generate(text)
+
+    async def generate_embeddings_batch(
+        self, texts: list[str]
+    ) -> list[tuple[list[float], int]]:
+        return [await self.generate_embedding(t) for t in texts]
+
+
+@pytest.fixture(autouse=True)
+def reset_provider():
+    """Reset the global provider override after each test."""
+    yield
+    set_embedding_provider_override(None)
 
 
 class _BackgroundDB:
@@ -76,7 +107,8 @@ async def test_log_is_non_blocking_and_schedules_embedding(
     fake_db = object()
     svc = EpisodicMemory(db=fake_db)
 
-    fake_episode = SimpleNamespace(id=uuid.uuid4())
+    fake_episode = object.__new__(type("E", (), {"id": uuid.uuid4()}))
+    fake_episode = type("E", (), {"id": uuid.uuid4()})()
     mocked_log = AsyncMock(return_value=fake_episode)
     monkeypatch.setattr("app.services.episodic.episode_repo.log_episode", mocked_log)
 
@@ -100,8 +132,8 @@ async def test_log_is_non_blocking_and_schedules_embedding(
 async def test_replay_session_orders_ascending(scope: MemoryScope, monkeypatch: pytest.MonkeyPatch):
     svc = EpisodicMemory(db=object())
 
-    e1 = SimpleNamespace(created_at=datetime(2026, 1, 2, tzinfo=UTC), id=uuid.uuid4())
-    e2 = SimpleNamespace(created_at=datetime(2026, 1, 1, tzinfo=UTC), id=uuid.uuid4())
+    e1 = type("E", (), {"created_at": datetime(2026, 1, 2, tzinfo=UTC), "id": uuid.uuid4()})()
+    e2 = type("E", (), {"created_at": datetime(2026, 1, 1, tzinfo=UTC), "id": uuid.uuid4()})()
 
     mocked_list = AsyncMock(return_value=[e1, e2])
     monkeypatch.setattr("app.services.episodic.episode_repo.list_episodes", mocked_list)
@@ -113,16 +145,14 @@ async def test_replay_session_orders_ascending(scope: MemoryScope, monkeypatch: 
 
 @pytest.mark.asyncio
 async def test_background_embedding_persists_record(scope: MemoryScope):
-    episode = SimpleNamespace(id=uuid.uuid4(), org_id=uuid.uuid4())
+    episode = type("E", (), {"id": uuid.uuid4(), "org_id": uuid.uuid4()})()
     background_db = _BackgroundDB(episode=episode)
-    embedding_service = SimpleNamespace(
-        model="fake-model",
-        generate_embedding=AsyncMock(return_value=([0.1, 0.2], 2)),
-    )
+
+    fake_provider = _FakeProvider(vector=[0.1, 0.2])
+    set_embedding_provider_override(fake_provider)
 
     svc = EpisodicMemory(
         db=object(),
-        embedding_service=embedding_service,
         session_factory=_SessionFactory(background_db),
     )
 
@@ -155,7 +185,7 @@ async def test_search_by_tags_delegates_to_repo(
 
 @pytest.mark.asyncio
 async def test_search_semantic_returns_similarity_results(scope: MemoryScope):
-    row = SimpleNamespace(
+    row = type("Row", (), dict(
         id=uuid.uuid4(),
         org_id=uuid.UUID(scope.org_id),
         team_id=None,
@@ -168,13 +198,13 @@ async def test_search_semantic_returns_similarity_results(scope: MemoryScope):
         metadata={"source": "chat"},
         created_at=datetime(2026, 1, 2, tzinfo=UTC),
         similarity_score=0.93,
-    )
-    fake_db = _FakeDB(rows=[row])
-    embedding_service = SimpleNamespace(
-        generate_embedding=AsyncMock(return_value=([0.2, 0.4, 0.8], 3))
-    )
+    ))()
 
-    svc = EpisodicMemory(db=fake_db, embedding_service=embedding_service)
+    fake_db = _FakeDB(rows=[row])
+    fake_provider = _FakeProvider(vector=[0.2, 0.4, 0.8])
+    set_embedding_provider_override(fake_provider)
+
+    svc = EpisodicMemory(db=fake_db)
     results = await svc.search_semantic(
         scope=scope,
         query="best way to season tofu",
@@ -191,7 +221,7 @@ async def test_search_semantic_returns_similarity_results(scope: MemoryScope):
 
 @pytest.mark.asyncio
 async def test_search_hybrid_combines_semantic_with_filters(scope: MemoryScope):
-    row = SimpleNamespace(
+    row = type("Row", (), dict(
         id=uuid.uuid4(),
         org_id=uuid.UUID(scope.org_id),
         team_id=None,
@@ -204,13 +234,13 @@ async def test_search_hybrid_combines_semantic_with_filters(scope: MemoryScope):
         metadata={"ticket": "abc"},
         created_at=datetime(2026, 1, 3, tzinfo=UTC),
         similarity_score=0.88,
-    )
-    fake_db = _FakeDB(rows=[row])
-    embedding_service = SimpleNamespace(
-        generate_embedding=AsyncMock(return_value=([0.1, 0.3, 0.9], 3))
-    )
+    ))()
 
-    svc = EpisodicMemory(db=fake_db, embedding_service=embedding_service)
+    fake_db = _FakeDB(rows=[row])
+    fake_provider = _FakeProvider(vector=[0.1, 0.3, 0.9])
+    set_embedding_provider_override(fake_provider)
+
+    svc = EpisodicMemory(db=fake_db)
     from_time = datetime(2026, 1, 1, tzinfo=UTC)
     to_time = datetime(2026, 1, 4, tzinfo=UTC)
 
@@ -237,8 +267,8 @@ async def test_search_hybrid_combines_semantic_with_filters(scope: MemoryScope):
 async def test_reconstruct_state_at_returns_snapshot(
     scope: MemoryScope, monkeypatch: pytest.MonkeyPatch
 ):
-    older = SimpleNamespace(created_at=datetime(2026, 1, 1, 9, tzinfo=UTC), id=uuid.uuid4())
-    newer = SimpleNamespace(created_at=datetime(2026, 1, 1, 15, tzinfo=UTC), id=uuid.uuid4())
+    older = type("E", (), {"created_at": datetime(2026, 1, 1, 9, tzinfo=UTC), "id": uuid.uuid4()})()
+    newer = type("E", (), {"created_at": datetime(2026, 1, 1, 15, tzinfo=UTC), "id": uuid.uuid4()})()
 
     mocked_list = AsyncMock(return_value=[newer, older])
     monkeypatch.setattr("app.services.episodic.episode_repo.list_episodes", mocked_list)
