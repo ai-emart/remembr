@@ -60,6 +60,22 @@ class LogMemoryResponse(BaseModel):
     session_id: str | None
     created_at: datetime
     token_count: int
+    embedding_status: str
+
+
+class EpisodeEmbeddingStatusResponse(BaseModel):
+    episode_id: str
+    embedding_status: str
+    embedding_generated_at: datetime | None
+    embedding_error: str | None
+
+
+class SessionEmbeddingStatusResponse(BaseModel):
+    session_id: str
+    pending: int
+    ready: int
+    failed: int
+    total: int
 
 
 class SessionCheckpointResponse(BaseModel):
@@ -424,6 +440,7 @@ async def log_memory(
             session_id=str(episode.session_id) if episode.session_id is not None else None,
             created_at=episode.created_at,
             token_count=token_count,
+            embedding_status=episode.embedding_status,
         ),
         request_id=ctx.request_id,
     )
@@ -812,6 +829,72 @@ async def delete_user_memories(
             deleted_episodes=result.deleted_episodes,
             deleted_sessions=result.deleted_sessions,
             user_id=str(user_id),
+        ),
+        request_id=ctx.request_id,
+    )
+
+
+@router.get(
+    "/memory/{episode_id}/status",
+    response_model=StandardResponse[EpisodeEmbeddingStatusResponse],
+)
+async def get_episode_embedding_status(
+    episode_id: UUID,
+    ctx: Annotated[RequestContext, Depends(require_auth)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> StandardResponse[EpisodeEmbeddingStatusResponse]:
+    """Return the embedding generation status for a single episode."""
+    from app.error_codes import EPISODE_NOT_FOUND
+
+    scope = ScopeResolver.resolve_writable_scope(ScopeResolver.from_request_context(ctx))
+    query = _apply_episode_scope_filters(
+        select(Episode).where(Episode.id == episode_id), scope
+    )
+    result = await db.execute(query)
+    episode = result.scalar_one_or_none()
+    if episode is None:
+        raise NotFoundError("Episode not found", details={"code": EPISODE_NOT_FOUND})
+
+    return success(
+        EpisodeEmbeddingStatusResponse(
+            episode_id=str(episode.id),
+            embedding_status=episode.embedding_status,
+            embedding_generated_at=episode.embedding_generated_at,
+            embedding_error=episode.embedding_error,
+        ),
+        request_id=ctx.request_id,
+    )
+
+
+@router.get(
+    "/sessions/{session_id}/embedding-status",
+    response_model=StandardResponse[SessionEmbeddingStatusResponse],
+)
+async def get_session_embedding_status(
+    session_id: UUID,
+    ctx: Annotated[RequestContext, Depends(require_auth)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> StandardResponse[SessionEmbeddingStatusResponse]:
+    """Return aggregate embedding status counts for all episodes in a session."""
+    scope = ScopeResolver.resolve_writable_scope(ScopeResolver.from_request_context(ctx))
+    await _require_session_in_scope(db, session_id, scope)
+
+    count_query = _apply_episode_scope_filters(
+        select(Episode.embedding_status, func.count(Episode.id))
+        .where(Episode.session_id == session_id)
+        .group_by(Episode.embedding_status),
+        scope,
+    )
+    rows = (await db.execute(count_query)).all()
+    counts = {status: int(cnt) for status, cnt in rows}
+
+    return success(
+        SessionEmbeddingStatusResponse(
+            session_id=str(session_id),
+            pending=counts.get("pending", 0),
+            ready=counts.get("ready", 0),
+            failed=counts.get("failed", 0),
+            total=sum(counts.values()),
         ),
         request_id=ctx.request_id,
     )

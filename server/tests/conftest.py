@@ -2,11 +2,25 @@
 
 from collections.abc import AsyncGenerator
 
+import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 pytest_plugins = ("pytest_asyncio",)
+
+
+@pytest.fixture(autouse=True)
+def _mock_embedding_task(monkeypatch):
+    """Prevent Celery tasks from dispatching to Redis during tests.
+
+    Tests that want to exercise the task body directly should call
+    _do_generate_embedding() or _mark_failed() from app.tasks.embeddings
+    using asyncio.run() in a sync test or awaiting them directly.
+    """
+    from app.tasks.embeddings import generate_embedding_for_episode
+
+    monkeypatch.setattr(generate_embedding_for_episode, "delay", lambda *a, **kw: None)
 
 
 @pytest_asyncio.fixture(scope="function")
@@ -16,15 +30,18 @@ async def db() -> AsyncGenerator[AsyncSession, None]:
     from app.db.base import Base
 
     settings = get_test_settings()
-    
+
     # Create a new engine for each test to avoid event loop issues
     test_engine = create_async_engine(
         settings.database_url.get_secret_value().replace("postgresql://", "postgresql+asyncpg://"),
         echo=False,
         pool_pre_ping=True,
-        connect_args={"statement_cache_size": 0},  # Disable prepared statement cache for tests
+        connect_args={
+            "statement_cache_size": 0,
+            "prepared_statement_cache_size": 0,
+        },
     )
-    
+
     test_session_local = async_sessionmaker(
         test_engine,
         class_=AsyncSession,
@@ -41,7 +58,7 @@ async def db() -> AsyncGenerator[AsyncSession, None]:
 
     async with test_engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
-    
+
     await test_engine.dispose()
 
 

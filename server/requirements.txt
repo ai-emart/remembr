@@ -18,6 +18,7 @@ pyjwt>=2.8.0
 slowapi>=0.1.9
 email-validator
 tiktoken
+celery[redis]>=5.3.0
 
 # Embedding providers — install what you need
 # pip install -r requirements-embeddings.txt  (all extras)

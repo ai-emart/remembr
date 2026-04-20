@@ -47,7 +47,7 @@ class Embedding(Base, UUIDMixin, TimestampMixin):
     )
     dimensions: Mapped[int] = mapped_column(Integer, nullable=False)
     vector: Mapped[list[float]] = mapped_column(
-        Vector(1024),  # Jina embeddings v3 dimension
+        Vector(),  # variable dimensions — supports all embedding providers
         nullable=False,
     )
 

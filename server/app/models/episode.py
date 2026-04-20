@@ -9,6 +9,10 @@ from sqlalchemy import ARRAY, DateTime, ForeignKey, String, Text, func
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+EMBEDDING_STATUS_PENDING = "pending"
+EMBEDDING_STATUS_READY = "ready"
+EMBEDDING_STATUS_FAILED = "failed"
+
 from app.db.base import Base, UUIDMixin
 
 
@@ -67,6 +71,21 @@ class Episode(Base, UUIDMixin):
         nullable=False,
         server_default=func.now(),
         index=True,
+    )
+    embedding_status: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        default=EMBEDDING_STATUS_PENDING,
+        server_default=EMBEDDING_STATUS_PENDING,
+        index=True,
+    )
+    embedding_generated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    embedding_error: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
     )
 
     # Relationships

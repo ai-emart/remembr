@@ -44,36 +44,6 @@ def reset_provider():
     set_embedding_provider_override(None)
 
 
-class _BackgroundDB:
-    def __init__(self, episode):
-        self.episode = episode
-        self.added = []
-        self.committed = False
-
-    async def get(self, _model, _id):
-        return self.episode
-
-    def add(self, value):
-        self.added.append(value)
-
-    async def commit(self):
-        self.committed = True
-
-
-class _SessionFactory:
-    def __init__(self, db):
-        self.db = db
-
-    def __call__(self):
-        return self
-
-    async def __aenter__(self):
-        return self.db
-
-    async def __aexit__(self, exc_type, exc, tb):
-        return False
-
-
 class _FakeExecuteResult:
     def __init__(self, rows):
         self._rows = rows
@@ -100,32 +70,32 @@ def scope() -> MemoryScope:
 
 
 @pytest.mark.asyncio
-async def test_log_is_non_blocking_and_schedules_embedding(
+async def test_log_dispatches_celery_task(
     scope: MemoryScope,
     monkeypatch: pytest.MonkeyPatch,
 ):
+    """log() should persist the episode and dispatch a Celery task."""
     fake_db = object()
     svc = EpisodicMemory(db=fake_db)
 
-    fake_episode = object.__new__(type("E", (), {"id": uuid.uuid4()}))
-    fake_episode = type("E", (), {"id": uuid.uuid4()})()
+    fake_episode = type("E", (), {"id": uuid.uuid4(), "embedding_status": "pending"})()
     mocked_log = AsyncMock(return_value=fake_episode)
     monkeypatch.setattr("app.services.episodic.episode_repo.log_episode", mocked_log)
 
-    scheduled = {}
+    dispatched = []
 
-    def _capture_create_task(coro):
-        scheduled["coro"] = coro
-        coro.close()
-        return object()
+    def _capture_delay(episode_id):
+        dispatched.append(episode_id)
 
-    monkeypatch.setattr("app.services.episodic.asyncio.create_task", _capture_create_task)
+    from app.tasks import embeddings as emb_tasks
+
+    monkeypatch.setattr(emb_tasks.generate_embedding_for_episode, "delay", _capture_delay)
 
     episode = await svc.log(scope=scope, role="user", content="hello")
 
     assert episode is fake_episode
     mocked_log.assert_awaited_once()
-    assert "coro" in scheduled
+    assert dispatched == [str(fake_episode.id)]
 
 
 @pytest.mark.asyncio
@@ -141,28 +111,6 @@ async def test_replay_session_orders_ascending(scope: MemoryScope, monkeypatch: 
     replay = await svc.replay_session(scope=scope, session_id=str(uuid.uuid4()))
 
     assert [item.id for item in replay] == [e2.id, e1.id]
-
-
-@pytest.mark.asyncio
-async def test_background_embedding_persists_record(scope: MemoryScope):
-    episode = type("E", (), {"id": uuid.uuid4(), "org_id": uuid.uuid4()})()
-    background_db = _BackgroundDB(episode=episode)
-
-    fake_provider = _FakeProvider(vector=[0.1, 0.2])
-    set_embedding_provider_override(fake_provider)
-
-    svc = EpisodicMemory(
-        db=object(),
-        session_factory=_SessionFactory(background_db),
-    )
-
-    await svc._generate_and_store_embedding(episode.id, "content")
-
-    assert background_db.committed is True
-    assert len(background_db.added) == 1
-    added = background_db.added[0]
-    assert added.episode_id == episode.id
-    assert added.dimensions == 2
 
 
 @pytest.mark.asyncio
