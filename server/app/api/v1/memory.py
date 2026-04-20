@@ -192,12 +192,16 @@ class DeleteEpisodeResponse(BaseModel):
     request_id: str
     deleted: bool
     episode_id: str
+    soft: bool = True
+    restorable_until: datetime | None = None
 
 
 class DeleteSessionMemoriesResponse(BaseModel):
     request_id: str
     deleted_count: int
     session_id: str
+    soft: bool = True
+    restorable_until: datetime | None = None
 
 
 class DeleteUserMemoriesResponse(BaseModel):
@@ -205,6 +209,21 @@ class DeleteUserMemoriesResponse(BaseModel):
     deleted_episodes: int
     deleted_sessions: int
     user_id: str
+    soft: bool = True
+    restorable_until: datetime | None = None
+
+
+class HardDeleteEpisodeResponse(BaseModel):
+    request_id: str
+    deleted: bool
+    episode_id: str
+    soft: bool = False
+
+
+class RestoreEpisodeResponse(BaseModel):
+    request_id: str
+    episode_id: str
+    restored: bool
 
 
 class MemoryDiffEpisode(BaseModel):
@@ -229,6 +248,7 @@ def _apply_session_scope_filters(query, scope: MemoryScope):
         .where(Session.team_id == (UUID(scope.team_id) if scope.team_id else None))
         .where(Session.user_id == (UUID(scope.user_id) if scope.user_id else None))
         .where(Session.agent_id == (UUID(scope.agent_id) if scope.agent_id else None))
+        .where(Session.not_deleted())
     )
 
 
@@ -238,6 +258,7 @@ def _apply_episode_scope_filters(query, scope: MemoryScope):
         .where(Episode.team_id == (UUID(scope.team_id) if scope.team_id else None))
         .where(Episode.user_id == (UUID(scope.user_id) if scope.user_id else None))
         .where(Episode.agent_id == (UUID(scope.agent_id) if scope.agent_id else None))
+        .where(Episode.not_deleted())
     )
 
 
@@ -749,13 +770,13 @@ async def delete_memory_episode(
 ) -> StandardResponse[DeleteEpisodeResponse]:
     scope = ScopeResolver.resolve_writable_scope(ScopeResolver.from_request_context(ctx))
     service = ForgettingService(db=db, redis=redis)
-    deleted = await service.delete_episode(
+    result = await service.delete_episode(
         episode_id=episode_id,
         scope=scope,
         request_id=ctx.request_id,
         actor_user_id=ctx.user_id,
     )
-    if not deleted:
+    if not result.deleted:
         raise NotFoundError("Episode not found", details={"code": EPISODE_NOT_FOUND})
 
     return success(
@@ -763,6 +784,8 @@ async def delete_memory_episode(
             request_id=ctx.request_id,
             deleted=True,
             episode_id=str(episode_id),
+            soft=True,
+            restorable_until=result.restorable_until,
         ),
         request_id=ctx.request_id,
     )
@@ -782,7 +805,7 @@ async def delete_session_memories(
     await _require_session_in_scope(db, session_id, scope)
 
     service = ForgettingService(db=db, redis=redis)
-    deleted_count = await service.delete_session_memories(
+    deleted_count, restorable_until = await service.delete_session_memories(
         session_id=session_id,
         scope=scope,
         request_id=ctx.request_id,
@@ -794,6 +817,8 @@ async def delete_session_memories(
             request_id=ctx.request_id,
             deleted_count=deleted_count,
             session_id=str(session_id),
+            soft=True,
+            restorable_until=restorable_until,
         ),
         request_id=ctx.request_id,
     )
@@ -815,6 +840,8 @@ async def delete_user_memories(
             details={"code": ORG_LEVEL_REQUIRED},
         )
 
+    from datetime import timedelta
+
     service = ForgettingService(db=db, redis=redis)
     result = await service.delete_user_memories(
         user_id=user_id,
@@ -822,6 +849,7 @@ async def delete_user_memories(
         request_id=ctx.request_id,
         actor_user_id=ctx.user_id,
     )
+    restorable_until = datetime.now(UTC) + timedelta(days=30)
 
     return success(
         DeleteUserMemoriesResponse(
@@ -829,6 +857,94 @@ async def delete_user_memories(
             deleted_episodes=result.deleted_episodes,
             deleted_sessions=result.deleted_sessions,
             user_id=str(user_id),
+            soft=True,
+            restorable_until=restorable_until,
+        ),
+        request_id=ctx.request_id,
+    )
+
+
+@router.delete(
+    "/memory/{episode_id}/hard",
+    response_model=StandardResponse[HardDeleteEpisodeResponse],
+)
+async def hard_delete_memory_episode(
+    episode_id: UUID,
+    ctx: Annotated[RequestContext, Depends(require_auth)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    redis: Annotated[Redis, Depends(get_redis)],
+) -> StandardResponse[HardDeleteEpisodeResponse]:
+    """Immediately and permanently delete an episode, bypassing the 30-day grace period.
+
+    Enterprise-gated: in production this endpoint should require an org-admin scope.
+    For now any authenticated caller within org scope may call it. All hard-deletes
+    are audit-logged with the full actor identity.
+    """
+    scope = ScopeResolver.resolve_writable_scope(ScopeResolver.from_request_context(ctx))
+    service = ForgettingService(db=db, redis=redis)
+    deleted = await service.hard_delete_episode(
+        episode_id=episode_id,
+        scope=scope,
+        request_id=ctx.request_id,
+        actor_user_id=ctx.user_id,
+    )
+    if not deleted:
+        raise NotFoundError("Episode not found", details={"code": EPISODE_NOT_FOUND})
+
+    return success(
+        HardDeleteEpisodeResponse(
+            request_id=ctx.request_id,
+            deleted=True,
+            episode_id=str(episode_id),
+            soft=False,
+        ),
+        request_id=ctx.request_id,
+    )
+
+
+@router.post(
+    "/memory/{episode_id}/restore",
+    response_model=StandardResponse[RestoreEpisodeResponse],
+)
+async def restore_memory_episode(
+    episode_id: UUID,
+    ctx: Annotated[RequestContext, Depends(require_auth)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    redis: Annotated[Redis, Depends(get_redis)],
+) -> StandardResponse[RestoreEpisodeResponse]:
+    """Restore a soft-deleted episode within the 30-day grace window.
+
+    Returns 404 if the episode was never found or already hard-deleted by the purge job.
+    Returns 410 Gone if the episode exists but the 30-day window has expired
+    (this state is transient — the purge job will hard-delete it shortly after).
+    """
+    from fastapi import Response as FastAPIResponse
+
+    scope = ScopeResolver.resolve_writable_scope(ScopeResolver.from_request_context(ctx))
+    service = ForgettingService(db=db, redis=redis)
+
+    try:
+        episode = await service.restore_episode(
+            episode_id=episode_id,
+            scope=scope,
+            request_id=ctx.request_id,
+            actor_user_id=ctx.user_id,
+        )
+    except ValueError as exc:
+        from fastapi import HTTPException
+        raise HTTPException(
+            status_code=status.HTTP_410_GONE,
+            detail=f"Grace period expired: {exc}",
+        )
+
+    if episode is None:
+        raise NotFoundError("Episode not found", details={"code": EPISODE_NOT_FOUND})
+
+    return success(
+        RestoreEpisodeResponse(
+            request_id=ctx.request_id,
+            episode_id=str(episode_id),
+            restored=True,
         ),
         request_id=ctx.request_id,
     )

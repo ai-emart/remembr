@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import Select, func, select
+from sqlalchemy import Select, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Episode
@@ -23,12 +23,13 @@ def _as_uuid(value: str | uuid.UUID | None) -> uuid.UUID | None:
 
 
 def _apply_scope_filters(query: Select[Any], scope: MemoryScope) -> Select[Any]:
-    """Apply exact scope boundary filtering for episode access."""
+    """Apply exact scope boundary filtering for episode access (excludes soft-deleted)."""
     return (
         query.where(Episode.org_id == _as_uuid(scope.org_id))
         .where(Episode.team_id == _as_uuid(scope.team_id))
         .where(Episode.user_id == _as_uuid(scope.user_id))
         .where(Episode.agent_id == _as_uuid(scope.agent_id))
+        .where(Episode.not_deleted())
     )
 
 
@@ -64,7 +65,7 @@ async def get_episode(
     episode_id: str | uuid.UUID,
     scope: MemoryScope,
 ) -> Episode | None:
-    """Get an episode by id if it belongs to the provided scope."""
+    """Get a non-deleted episode by id if it belongs to the provided scope."""
     query = select(Episode).where(Episode.id == _as_uuid(episode_id))
     query = _apply_scope_filters(query, scope)
     result = await db.execute(query)
@@ -82,7 +83,7 @@ async def list_episodes(
     limit: int = 50,
     offset: int = 0,
 ) -> list[Episode]:
-    """List episodes in scope with optional session/tag/role/time filtering."""
+    """List non-deleted episodes in scope with optional session/tag/role/time filtering."""
     query = select(Episode)
     query = _apply_scope_filters(query, scope)
 
@@ -107,17 +108,17 @@ async def delete_episode(
     episode_id: str | uuid.UUID,
     scope: MemoryScope,
 ) -> None:
-    """Delete an episode if it exists in scope."""
+    """Soft-delete an episode if it exists in scope."""
     episode = await get_episode(db, episode_id, scope)
     if episode is None:
         return
 
-    await db.delete(episode)
+    episode.deleted_at = datetime.now(UTC)
     await db.flush()
 
 
 async def count_episodes(db: AsyncSession, scope: MemoryScope) -> int:
-    """Count episodes available in the provided scope."""
+    """Count non-deleted episodes available in the provided scope."""
     query = select(func.count(Episode.id))
     query = _apply_scope_filters(query, scope)
     result = await db.execute(query)

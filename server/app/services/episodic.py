@@ -192,6 +192,8 @@ class EpisodicMemory:
               AND e.team_id IS NOT DISTINCT FROM :team_id
               AND e.user_id IS NOT DISTINCT FROM :user_id
               AND e.agent_id IS NOT DISTINCT FROM :agent_id
+              AND e.deleted_at IS NULL
+              AND emb.deleted_at IS NULL
               AND 1 - (emb.vector <=> '{vector_literal}'::vector) >= :score_threshold
             ORDER BY similarity_score DESC
             LIMIT :limit
@@ -241,6 +243,7 @@ class EpisodicMemory:
                     1 - (emb.vector <=> '{vector_literal}'::vector) AS similarity_score
                 FROM embeddings emb
                 WHERE emb.org_id = :org_id
+                  AND emb.deleted_at IS NULL
                   AND 1 - (emb.vector <=> '{vector_literal}'::vector) >= :score_threshold
                 ORDER BY similarity_score DESC
                 LIMIT 50
@@ -264,6 +267,7 @@ class EpisodicMemory:
               AND e.team_id IS NOT DISTINCT FROM :team_id
               AND e.user_id IS NOT DISTINCT FROM :user_id
               AND e.agent_id IS NOT DISTINCT FROM :agent_id
+              AND e.deleted_at IS NULL
               AND (:tags IS NULL OR e.tags && :tags)
               AND (:from_time IS NULL OR e.created_at >= :from_time)
               AND (:to_time IS NULL OR e.created_at <= :to_time)

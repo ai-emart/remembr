@@ -9,10 +9,10 @@ from sqlalchemy import ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.db.base import Base, TimestampMixin, UUIDMixin
+from app.db.base import Base, SoftDeleteMixin, TimestampMixin, UUIDMixin
 
 
-class Embedding(Base, UUIDMixin, TimestampMixin):
+class Embedding(Base, UUIDMixin, TimestampMixin, SoftDeleteMixin):
     """
     Embedding model for storing vector representations.
 

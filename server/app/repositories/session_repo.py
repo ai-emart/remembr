@@ -1,6 +1,7 @@
 """Repository functions for session CRUD operations."""
 
 import uuid
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import select
@@ -20,12 +21,13 @@ def _as_uuid(value: str | uuid.UUID | None) -> uuid.UUID | None:
 
 
 def _apply_scope_filters(query: Any, scope: MemoryScope) -> Any:
-    """Apply exact scope filtering for session access."""
+    """Apply exact scope filtering for session access (excludes soft-deleted)."""
     return (
         query.where(Session.org_id == _as_uuid(scope.org_id))
         .where(Session.team_id == _as_uuid(scope.team_id))
         .where(Session.user_id == _as_uuid(scope.user_id))
         .where(Session.agent_id == _as_uuid(scope.agent_id))
+        .where(Session.not_deleted())
     )
 
 
@@ -53,7 +55,7 @@ async def get_session(
     session_id: str | uuid.UUID,
     scope: MemoryScope,
 ) -> Session | None:
-    """Get a session by id if it matches scope."""
+    """Get a non-deleted session by id if it matches scope."""
     query = select(Session).where(Session.id == _as_uuid(session_id))
     query = _apply_scope_filters(query, scope)
     result = await db.execute(query)
@@ -66,7 +68,11 @@ async def update_session(
     metadata: dict[str, Any] | None,
 ) -> Session:
     """Update session metadata."""
-    result = await db.execute(select(Session).where(Session.id == _as_uuid(session_id)))
+    result = await db.execute(
+        select(Session)
+        .where(Session.id == _as_uuid(session_id))
+        .where(Session.not_deleted())
+    )
     session = result.scalar_one_or_none()
     if session is None:
         raise ValueError(f"Session not found: {session_id}")
@@ -83,7 +89,7 @@ async def list_sessions(
     limit: int = 20,
     offset: int = 0,
 ) -> list[Session]:
-    """List sessions in scope ordered by recent update."""
+    """List non-deleted sessions in scope ordered by recent update."""
     query = select(Session).order_by(Session.updated_at.desc()).limit(limit).offset(offset)
     query = _apply_scope_filters(query, scope)
     result = await db.execute(query)
@@ -95,9 +101,9 @@ async def delete_session(
     session_id: str | uuid.UUID,
     scope: MemoryScope,
 ) -> None:
-    """Delete a session if it matches scope."""
+    """Soft-delete a session if it matches scope."""
     session = await get_session(db, session_id, scope)
     if session is None:
         return
-    await db.delete(session)
+    session.deleted_at = datetime.now(UTC)
     await db.flush()

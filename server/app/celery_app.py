@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from celery import Celery
+from celery.schedules import crontab
 
 from app.config import get_settings
 
@@ -25,8 +26,12 @@ def create_celery_app() -> Celery:
         task_track_started=True,
         task_acks_late=True,
         worker_prefetch_multiplier=1,
-        # Beat schedule placeholder — populated in a future task
-        beat_schedule={},
+        beat_schedule={
+            "purge-soft-deleted-daily": {
+                "task": "app.tasks.cleanup.purge_soft_deleted",
+                "schedule": crontab(hour=3, minute=0),
+            },
+        },
     )
     return app
 

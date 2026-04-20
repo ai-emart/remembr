@@ -143,7 +143,7 @@ async def test_delete_episode_noops_if_missing(scope: MemoryScope, monkeypatch: 
 @pytest.mark.asyncio
 async def test_delete_episode_deletes_found(scope: MemoryScope, monkeypatch: pytest.MonkeyPatch):
     db = _FakeSession()
-    target = SimpleNamespace(id=uuid.uuid4())
+    target = SimpleNamespace(id=uuid.uuid4(), deleted_at=None)
 
     async def _found(*_args, **_kwargs):
         return target
@@ -152,5 +152,7 @@ async def test_delete_episode_deletes_found(scope: MemoryScope, monkeypatch: pyt
 
     await episode_repo.delete_episode(db=db, episode_id=str(target.id), scope=scope)
 
-    assert db.deleted == [target]
+    # Soft-delete: deleted_at is set, db.delete() is NOT called
+    assert target.deleted_at is not None
+    assert db.deleted == []
     assert db.flushed is True

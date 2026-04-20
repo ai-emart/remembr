@@ -147,24 +147,24 @@ services:
       start_period: 20s
 
   # ---------------------------------------------------------------------------
-  # Celery Beat — periodic task scheduler (placeholder; schedule populated in a future prompt)
-  # Uncomment when a beat schedule is configured in app/celery_app.py.
+  # Celery Beat — periodic task scheduler
+  # Runs the daily purge_soft_deleted task at 03:00 UTC.
   # ---------------------------------------------------------------------------
-  # worker-beat:
-  #   build:
-  #     context: ./server
-  #     dockerfile: Dockerfile
-  #   container_name: remembr-worker-beat
-  #   restart: unless-stopped
-  #   command: celery -A app.celery_app beat --loglevel=info
-  #   env_file:
-  #     - .env
-  #   environment:
-  #     DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://remembr:remembr@pgbouncer:6432/remembr}
-  #     REDIS_URL: ${REDIS_URL:-redis://redis:6379}
-  #   depends_on:
-  #     redis:
-  #       condition: service_healthy
+  worker-beat:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: remembr-worker-beat
+    restart: unless-stopped
+    command: celery -A app.celery_app beat --loglevel=info
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://remembr:remembr@pgbouncer:6432/remembr}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+    depends_on:
+      redis:
+        condition: service_healthy
 
   # ---------------------------------------------------------------------------
   # Remembr Server — FastAPI application

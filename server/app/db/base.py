@@ -2,6 +2,7 @@
 
 import uuid
 from datetime import datetime
+from typing import Any
 
 from sqlalchemy import DateTime, func
 from sqlalchemy.dialects.postgresql import UUID
@@ -39,3 +40,23 @@ class UUIDMixin:
         default=uuid.uuid4,
         server_default=func.gen_random_uuid(),
     )
+
+
+class SoftDeleteMixin:
+    """Soft-delete support. Rows with deleted_at set are excluded from normal queries.
+
+    Apply to a model then call .where(Model.not_deleted()) on every read query.
+    The daily purge task hard-deletes rows where deleted_at < now() - 30 days.
+    """
+
+    deleted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+        index=True,
+        default=None,
+    )
+
+    @classmethod
+    def not_deleted(cls) -> Any:
+        """SQLAlchemy filter expression that excludes soft-deleted rows."""
+        return cls.deleted_at.is_(None)

@@ -13,10 +13,10 @@ EMBEDDING_STATUS_PENDING = "pending"
 EMBEDDING_STATUS_READY = "ready"
 EMBEDDING_STATUS_FAILED = "failed"
 
-from app.db.base import Base, UUIDMixin
+from app.db.base import Base, SoftDeleteMixin, UUIDMixin
 
 
-class Episode(Base, UUIDMixin):
+class Episode(Base, UUIDMixin, SoftDeleteMixin):
     """
     Episode model representing individual messages or interactions.
 

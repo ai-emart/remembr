@@ -9,10 +9,10 @@ from sqlalchemy import DateTime, ForeignKey
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.db.base import Base, TimestampMixin, UUIDMixin
+from app.db.base import Base, SoftDeleteMixin, TimestampMixin, UUIDMixin
 
 
-class Session(Base, UUIDMixin, TimestampMixin):
+class Session(Base, UUIDMixin, TimestampMixin, SoftDeleteMixin):
     """
     Session model for grouping related episodes.
 
