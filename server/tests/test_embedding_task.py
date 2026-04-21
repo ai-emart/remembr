@@ -173,7 +173,7 @@ def test_task_marks_failed_after_all_retries():
 # ── status endpoints (integration-style with real DB) ─────────────────────────
 
 pytestmark_db = pytest.mark.skipif(
-    True,  # Skip DB integration tests when pgvector extension is not available in test DB
+    False,  # pgvector is available via Docker container (remembr-pgvector on port 5433)
     reason="Requires pgvector extension in test database",
 )
 
@@ -182,29 +182,25 @@ pytestmark_db = pytest.mark.skipif(
 @pytest.mark.asyncio
 async def test_episode_embedding_status_endpoint(client, db):
     """GET /api/v1/memory/{id}/status returns embedding_status field."""
-    from sqlalchemy import insert
-
     from app.models import Episode, Organization
 
     org_id = uuid.uuid4()
-    # Insert minimal org + episode directly
-    await db.execute(
-        insert(Organization).values(
-            id=org_id, name="Test Org", slug=f"test-{org_id}"
-        )
-    )
     ep_id = uuid.uuid4()
-    await db.execute(
-        insert(Episode).values(
-            id=ep_id,
-            org_id=org_id,
-            role="user",
-            content="test content",
-            tags=[],
-            metadata={},
-            embedding_status="pending",
-        )
+
+    org = Organization(id=org_id, name="Test Org")
+    db.add(org)
+    await db.flush()
+
+    ep = Episode(
+        id=ep_id,
+        org_id=org_id,
+        role="user",
+        content="test content",
+        tags=[],
+        metadata_={},
+        embedding_status="pending",
     )
+    db.add(ep)
     await db.commit()
 
     # Build auth token for the org
