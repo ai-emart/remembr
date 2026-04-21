@@ -529,14 +529,19 @@ class RemembrClient:
 
                     buf += ch
 
-                    if depth == 0 and buf.strip().startswith("{"):
-                        obj_str = buf.strip().rstrip(",").strip()
-                        if obj_str:
-                            try:
-                                yield _json.loads(obj_str)
-                            except _json.JSONDecodeError:
-                                pass
-                        buf = ""
+                    if depth == 0:
+                        # Strip array brackets / commas / whitespace to find object boundary
+                        candidate = buf.lstrip(" \t\n\r[],")
+                        if candidate.startswith("{"):
+                            obj_str = candidate.rstrip(" \t\n\r,")
+                            if obj_str:
+                                try:
+                                    yield _json.loads(obj_str)
+                                except _json.JSONDecodeError:
+                                    pass
+                            buf = ""
+                        elif not candidate:
+                            buf = ""  # only separators accumulated — clear
 
     @staticmethod
     def _require_non_empty(value: str, param_name: str) -> None:

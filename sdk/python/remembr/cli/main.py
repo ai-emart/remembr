@@ -4,17 +4,17 @@ from __future__ import annotations
 
 import asyncio
 import json
-import sys
+import traceback
+from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 from typing import Annotated, Optional
 
 import typer
-from rich.console import Console
 from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 
 from remembr import RemembrClient
-from remembr.exceptions import AuthenticationError, RemembrError
+from remembr.exceptions import RemembrError
 
 from . import config as cfg
 from .output import (
@@ -26,6 +26,8 @@ from .output import (
     print_success,
     sessions_table,
 )
+
+# ── Typer app tree ─────────────────────────────────────────────────────────────
 
 app = typer.Typer(
     name="remembr",
@@ -39,12 +41,15 @@ sessions_app = typer.Typer(help="Session management.", no_args_is_help=True)
 app.add_typer(config_app, name="config")
 app.add_typer(sessions_app, name="sessions")
 
+# Module-level state set by the root callback so every sub-command can read it.
+_state: dict = {"verbose": False, "api_key": None, "base_url": None}
 
-# ── version ───────────────────────────────────────────────────────────────────
+
+# ── Root callback (version + global flags) ─────────────────────────────────────
 
 def _version_callback(value: bool) -> None:
     if value:
-        from importlib.metadata import version, PackageNotFoundError
+        from importlib.metadata import PackageNotFoundError, version
         try:
             v = version("remembr")
         except PackageNotFoundError:
@@ -54,24 +59,42 @@ def _version_callback(value: bool) -> None:
 
 
 @app.callback()
-def main(
+def root(
     version: Annotated[
         Optional[bool],
         typer.Option("--version", "-V", callback=_version_callback, is_eager=True, help="Show version."),
     ] = None,
+    api_key: Annotated[
+        Optional[str],
+        typer.Option("--api-key", envvar="REMEMBR_API_KEY", help="Override API key.", show_default=False),
+    ] = None,
+    base_url: Annotated[
+        Optional[str],
+        typer.Option("--base-url", envvar="REMEMBR_BASE_URL", help="Override base URL.", show_default=False),
+    ] = None,
+    verbose: Annotated[
+        bool,
+        typer.Option("--verbose", "-v", help="Show full stack traces on errors."),
+    ] = False,
 ) -> None:
-    pass
+    """Remembr — persistent memory for AI agents."""
+    _state["verbose"] = verbose
+    # Explicit flag > env var (already resolved by envvar=) > config file > default
+    file_api_key, file_base_url = cfg.resolve_client_args()
+    _state["api_key"] = api_key or file_api_key
+    _state["base_url"] = base_url or file_base_url
 
 
-# ── helpers ───────────────────────────────────────────────────────────────────
+# ── Shared helpers ─────────────────────────────────────────────────────────────
 
-def _client() -> RemembrClient:
-    api_key, base_url = cfg.resolve_client_args()
+def _make_client() -> RemembrClient:
+    api_key = _state["api_key"]
+    base_url = _state["base_url"] or "http://localhost:8000/api/v1"
     if not api_key:
         print_error(
             "No API key found. Set it with:\n"
             "  remembr config set api_key <your-key>\n"
-            "or export REMEMBR_API_KEY=<your-key>"
+            "or pass --api-key / export REMEMBR_API_KEY=<your-key>"
         )
         raise typer.Exit(1)
     return RemembrClient(api_key=api_key, base_url=base_url)
@@ -81,12 +104,41 @@ def _run(coro):  # type: ignore[no-untyped-def]
     return asyncio.run(coro)
 
 
-def _handle_error(exc: Exception) -> None:
-    print_error(str(exc))
-    raise typer.Exit(1)
+@contextmanager
+def _catch():
+    """Context manager: pretty-print RemembrError; show traceback only if --verbose."""
+    try:
+        yield
+    except RemembrError as exc:
+        if _state["verbose"]:
+            err_console.print_exception()
+        else:
+            msg = str(exc)
+            if exc.code:
+                msg = f"[{exc.code}] {msg}"
+            if exc.status_code:
+                msg = f"HTTP {exc.status_code}: {msg}"
+            print_error(msg)
+        raise typer.Exit(1)
+    except Exception as exc:  # unexpected
+        if _state["verbose"]:
+            err_console.print_exception()
+        else:
+            print_error(f"Unexpected error: {exc}")
+        raise typer.Exit(1)
 
 
-# ── config commands ───────────────────────────────────────────────────────────
+def _parse_date(value: str | None, flag: str) -> datetime | None:
+    if value is None:
+        return None
+    try:
+        return datetime.strptime(value, "%Y-%m-%d")
+    except ValueError:
+        print_error(f"{flag} must be YYYY-MM-DD, got '{value}'")
+        raise typer.Exit(1)
+
+
+# ── config ────────────────────────────────────────────────────────────────────
 
 @config_app.command("set")
 def config_set(
@@ -119,10 +171,12 @@ def config_show() -> None:
     """Show all config values."""
     values = cfg.all_values()
     if not values:
-        console.print("[dim]No configuration found. Use [bold]remembr config set[/bold] to get started.[/dim]")
+        console.print(
+            "[dim]No configuration found. "
+            "Use [bold]remembr config set[/bold] to get started.[/dim]"
+        )
         return
     for k, v in values.items():
-        # Mask api_key
         display = f"{v[:6]}..." if k == "api_key" and len(str(v)) > 6 else v
         console.print(f"[bold cyan]{k}[/bold cyan] = {display}")
 
@@ -134,12 +188,20 @@ def health() -> None:
     """Check service health."""
     import httpx
 
-    _, base_url = cfg.resolve_client_args()
-    # /health is one level up from /api/v1
+    base_url = _state["base_url"] or "http://localhost:8000/api/v1"
     health_url = base_url.rstrip("/").removesuffix("/api/v1") + "/health"
 
-    try:
-        response = httpx.get(health_url, timeout=10)
+    with _catch():
+        try:
+            response = httpx.get(health_url, timeout=10)
+            response.raise_for_status()
+        except httpx.ConnectError:
+            print_error(f"Connection refused: {health_url}")
+            raise typer.Exit(1)
+        except httpx.HTTPStatusError as exc:
+            print_error(f"HTTP {exc.response.status_code} from {health_url}")
+            raise typer.Exit(1)
+
         data = response.json()
         status = data.get("status", "unknown")
         color = "green" if status == "ok" else "red"
@@ -147,9 +209,6 @@ def health() -> None:
         for k, v in data.items():
             if k != "status":
                 console.print(f"  {k}: {v}")
-    except Exception as exc:
-        print_error(f"Could not reach {health_url}: {exc}")
-        raise typer.Exit(1)
 
 
 # ── store ─────────────────────────────────────────────────────────────────────
@@ -166,22 +225,19 @@ def store(
     tag_list = [t.strip() for t in tags.split(",")] if tags else []
 
     async def _store() -> None:
-        async with _client() as client:
-            try:
+        with _catch():
+            async with _make_client() as client:
                 episode = await client.store(
                     content, role=role, session_id=session, tags=tag_list
                 )
-            except RemembrError as exc:
-                _handle_error(exc)
-                return
 
         if as_json:
             print_json(episode.model_dump())
         else:
             print_success(f"Stored episode [bold cyan]{episode.episode_id}[/bold cyan]")
             console.print(f"  role   : {episode.role}")
-            console.print(f"  session: {episode.session_id or '—'}")
-            console.print(f"  tags   : {', '.join(episode.tags) or '—'}")
+            console.print(f"  session: {episode.session_id or '-'}")
+            console.print(f"  tags   : {', '.join(episode.tags) or '-'}")
             console.print(f"  created: {episode.created_at}")
 
     _run(_store())
@@ -199,24 +255,18 @@ def search(
     """Search memory episodes."""
 
     async def _search() -> None:
-        async with _client() as client:
-            try:
+        with _catch():
+            async with _make_client() as client:
                 result = await client.search(query, session_id=session, limit=limit)
-            except RemembrError as exc:
-                _handle_error(exc)
-                return
 
         if as_json:
             print_json([r.model_dump() for r in result.results])
         else:
-            console.print(
-                f"[dim]{result.total} total result(s) · {result.query_time_ms} ms[/dim]"
-            )
+            console.print(f"[dim]{result.total} total · {result.query_time_ms} ms[/dim]")
             if not result.results:
                 console.print("[dim]No results found.[/dim]")
                 return
-            rows = [r.model_dump() for r in result.results]
-            console.print(episodes_table(rows, title=f'Search: "{query}"'))
+            console.print(episodes_table([r.model_dump() for r in result.results], title=f'Search: "{query}"'))
 
     _run(_search())
 
@@ -225,19 +275,16 @@ def search(
 
 @sessions_app.command("list")
 def sessions_list(
-    limit: Annotated[int, typer.Option("--limit", "-n")] = 20,
-    offset: Annotated[int, typer.Option("--offset")] = 0,
-    as_json: Annotated[bool, typer.Option("--json")] = False,
+    limit: Annotated[int, typer.Option("--limit", "-n", help="Max results.")] = 20,
+    offset: Annotated[int, typer.Option("--offset", help="Skip N sessions.")] = 0,
+    as_json: Annotated[bool, typer.Option("--json", help="Output raw JSON.")] = False,
 ) -> None:
     """List sessions."""
 
     async def _list() -> None:
-        async with _client() as client:
-            try:
+        with _catch():
+            async with _make_client() as client:
                 sessions = await client.list_sessions(limit=limit, offset=offset)
-            except RemembrError as exc:
-                _handle_error(exc)
-                return
 
         if as_json:
             print_json([s.model_dump() for s in sessions])
@@ -252,30 +299,31 @@ def sessions_list(
 @sessions_app.command("get")
 def sessions_get(
     session_id: Annotated[str, typer.Argument(help="Session ID.")],
-    as_json: Annotated[bool, typer.Option("--json")] = False,
+    as_json: Annotated[bool, typer.Option("--json", help="Output raw JSON.")] = False,
 ) -> None:
     """Get session details, window messages, and token usage."""
 
     async def _get() -> None:
         import httpx as _httpx
 
-        api_key, base_url = cfg.resolve_client_args()
+        api_key = _state["api_key"]
+        base_url = _state["base_url"] or "http://localhost:8000/api/v1"
         if not api_key:
             print_error("No API key configured.")
             raise typer.Exit(1)
 
-        # Fetch full session detail via raw request to get window + token_usage
-        async with _httpx.AsyncClient(
-            base_url=base_url,
-            headers={"Authorization": f"Bearer {api_key}", "Accept": "application/json"},
-            timeout=30,
-        ) as http:
-            resp = await http.get(f"/sessions/{session_id}")
-            if resp.status_code == 404:
-                print_error(f"Session '{session_id}' not found.")
-                raise typer.Exit(1)
-            resp.raise_for_status()
-            data = resp.json().get("data", resp.json())
+        with _catch():
+            async with _httpx.AsyncClient(
+                base_url=base_url,
+                headers={"Authorization": f"Bearer {api_key}", "Accept": "application/json"},
+                timeout=30,
+            ) as http:
+                resp = await http.get(f"/sessions/{session_id}")
+                if resp.status_code == 404:
+                    print_error(f"Session '{session_id}' not found.")
+                    raise typer.Exit(1)
+                resp.raise_for_status()
+                data = resp.json().get("data", resp.json())
 
         if as_json:
             print_json(data)
@@ -283,8 +331,8 @@ def sessions_get(
 
         session = data.get("session", {})
         console.print(f"\n[bold cyan]Session[/bold cyan] {session.get('session_id', session_id)}")
-        console.print(f"  org_id  : {session.get('org_id', '—')}")
-        console.print(f"  created : {session.get('created_at', '—')}")
+        console.print(f"  org_id  : {session.get('org_id', '-')}")
+        console.print(f"  created : {session.get('created_at', '-')}")
         meta = session.get("metadata") or {}
         if meta:
             console.print(f"  metadata: {json.dumps(meta)}")
@@ -295,7 +343,8 @@ def sessions_get(
             for msg in messages:
                 role_color = "blue" if msg.get("role") == "assistant" else "green"
                 console.print(
-                    f"  [{role_color}]{msg.get('role', '?')}[/{role_color}]: {msg.get('content', '')[:120]}"
+                    f"  [{role_color}]{msg.get('role', '?')}[/{role_color}]: "
+                    f"{msg.get('content', '')[:120]}"
                 )
 
         token_usage = data.get("token_usage", {})
@@ -309,11 +358,19 @@ def sessions_get(
 
 @app.command()
 def export(
-    output: Annotated[Optional[Path], typer.Option("--output", "-o", help="Output file path.")] = None,
+    output: Annotated[
+        Optional[Path], typer.Option("--output", "-o", help="Output file path.")
+    ] = None,
     format: Annotated[str, typer.Option("--format", "-f", help="json or csv.")] = "json",
-    from_date: Annotated[Optional[str], typer.Option("--from", help="From date (YYYY-MM-DD).")] = None,
-    to_date: Annotated[Optional[str], typer.Option("--to", help="To date (YYYY-MM-DD).")] = None,
-    session: Annotated[Optional[str], typer.Option("--session", "-s", help="Session ID.")] = None,
+    from_date: Annotated[
+        Optional[str], typer.Option("--from", help="From date (YYYY-MM-DD).")
+    ] = None,
+    to_date: Annotated[
+        Optional[str], typer.Option("--to", help="To date (YYYY-MM-DD).")
+    ] = None,
+    session: Annotated[
+        Optional[str], typer.Option("--session", "-s", help="Session ID.")
+    ] = None,
 ) -> None:
     """Export memories to a file (JSON or CSV) with progress."""
     if format not in ("json", "csv"):
@@ -322,57 +379,47 @@ def export(
 
     from_dt = _parse_date(from_date, "--from")
     to_dt = _parse_date(to_date, "--to")
-
     dest = output or Path(f"remembr_export.{format}")
 
     async def _export() -> None:
-        async with _client() as client:
-            with Progress(
-                SpinnerColumn(),
-                TextColumn("[progress.description]{task.description}"),
-                BarColumn(),
-                TextColumn("{task.completed} episodes"),
-                TimeElapsedColumn(),
-                console=console,
-                transient=True,
-            ) as progress:
-                task = progress.add_task(f"Exporting to {dest.name}…", total=None)
+        with _catch():
+            async with _make_client() as client:
+                with Progress(
+                    SpinnerColumn(),
+                    TextColumn("[progress.description]{task.description}"),
+                    BarColumn(),
+                    TextColumn("{task.completed} episodes"),
+                    TimeElapsedColumn(),
+                    console=console,
+                    transient=True,
+                ) as progress:
+                    task = progress.add_task(f"Exporting to {dest.name}...", total=None)
 
-                stream = await client.export(
-                    format=format,
-                    from_date=from_dt,
-                    to_date=to_dt,
-                    session_id=session,
-                )
+                    stream = await client.export(
+                        format=format,
+                        from_date=from_dt,
+                        to_date=to_dt,
+                        session_id=session,
+                    )
 
-                if format == "csv":
-                    assert isinstance(stream, bytes)
-                    dest.write_bytes(stream)
-                    progress.update(task, completed=1, total=1)
-                else:
-                    count = 0
-                    first = True
-                    with dest.open("w", encoding="utf-8") as fh:
-                        fh.write("[\n")
-                        async for episode in stream:  # type: ignore[union-attr]
-                            if not first:
-                                fh.write(",\n")
-                            fh.write(json.dumps(episode))
-                            first = False
-                            count += 1
-                            progress.update(task, completed=count)
-                        fh.write("\n]\n")
+                    if format == "csv":
+                        assert isinstance(stream, bytes)
+                        dest.write_bytes(stream)
+                        progress.update(task, completed=1, total=1)
+                    else:
+                        count = 0
+                        first = True
+                        with dest.open("w", encoding="utf-8") as fh:
+                            fh.write("[\n")
+                            async for episode in stream:  # type: ignore[union-attr]
+                                if not first:
+                                    fh.write(",\n")
+                                fh.write(json.dumps(episode))
+                                first = False
+                                count += 1
+                                progress.update(task, completed=count)
+                            fh.write("\n]\n")
 
         print_success(f"Exported to [bold]{dest}[/bold]")
 
     _run(_export())
-
-
-def _parse_date(value: str | None, flag: str) -> datetime | None:
-    if value is None:
-        return None
-    try:
-        return datetime.strptime(value, "%Y-%m-%d")
-    except ValueError:
-        print_error(f"{flag} must be YYYY-MM-DD, got '{value}'")
-        raise typer.Exit(1)
