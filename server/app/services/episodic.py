@@ -14,6 +14,7 @@ from app.models import Episode
 from app.repositories import episode_repo
 from app.services.embeddings import EmbeddingProvider, get_embedding_provider
 from app.services.scoping import MemoryScope
+from app.services.tag_filter import TagFilter, build_tag_filter_sql
 
 
 @dataclass(frozen=True)
@@ -166,10 +167,14 @@ class EpisodicMemory:
         query: str,
         limit: int = 10,
         score_threshold: float = 0.7,
+        tag_filters: list[TagFilter] | None = None,
     ) -> list[EpisodeSearchResult]:
         """Run semantic search against episode embeddings within scope."""
         query_vector, _ = await self._provider.generate_embedding(query)
         vector_literal = _to_pgvector_literal(query_vector)
+
+        tf_sql, tf_params = build_tag_filter_sql(tag_filters or [], alias="e")
+        tf_clause = f"\n              AND {tf_sql}" if tf_sql else ""
 
         sql = text(
             f"""
@@ -194,7 +199,7 @@ class EpisodicMemory:
               AND e.agent_id IS NOT DISTINCT FROM :agent_id
               AND e.deleted_at IS NULL
               AND emb.deleted_at IS NULL
-              AND 1 - (emb.vector <=> '{vector_literal}'::vector) >= :score_threshold
+              AND 1 - (emb.vector <=> '{vector_literal}'::vector) >= :score_threshold{tf_clause}
             ORDER BY similarity_score DESC
             LIMIT :limit
             """
@@ -208,6 +213,7 @@ class EpisodicMemory:
                 "agent_id": _as_uuid(scope.agent_id),
                 "score_threshold": score_threshold,
                 "limit": limit,
+                **tf_params,
             },
         )
 
@@ -224,6 +230,7 @@ class EpisodicMemory:
         scope: MemoryScope,
         query: str,
         tags: list[str] | None = None,
+        tag_filters: list[TagFilter] | None = None,
         from_time: datetime | None = None,
         to_time: datetime | None = None,
         role: str | None = None,
@@ -234,6 +241,9 @@ class EpisodicMemory:
         """Run one-roundtrip semantic + metadata search using a CTE."""
         query_vector, _ = await self._provider.generate_embedding(query)
         vector_literal = _to_pgvector_literal(query_vector)
+
+        tf_sql, tf_params = build_tag_filter_sql(tag_filters or [], alias="e")
+        tf_clause = f"\n              AND {tf_sql}" if tf_sql else ""
 
         sql = text(
             f"""
@@ -272,7 +282,7 @@ class EpisodicMemory:
               AND (:from_time IS NULL OR e.created_at >= :from_time)
               AND (:to_time IS NULL OR e.created_at <= :to_time)
               AND (:role IS NULL OR e.role = :role)
-              AND (:session_id IS NULL OR e.session_id = :session_id)
+              AND (:session_id IS NULL OR e.session_id = :session_id){tf_clause}
             ORDER BY sc.similarity_score DESC
             LIMIT :limit
             """
@@ -291,6 +301,7 @@ class EpisodicMemory:
                 "role": role,
                 "session_id": session_id,
                 "limit": limit,
+                **tf_params,
             },
         )
 

@@ -2,7 +2,7 @@
 
 from .client import RemembrClient
 from .exceptions import AuthenticationError, NotFoundError, RateLimitError, RemembrError, ServerError
-from .models import CheckpointInfo, Episode, MemoryQueryResult, SearchResult, Session
+from .models import CheckpointInfo, Episode, MemoryQueryResult, SearchResult, Session, TagFilter
 
 __all__ = [
     "RemembrClient",
@@ -16,4 +16,5 @@ __all__ = [
     "SearchResult",
     "MemoryQueryResult",
     "CheckpointInfo",
+    "TagFilter",
 ]

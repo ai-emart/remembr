@@ -405,6 +405,10 @@ Search memory via semantic/hybrid/filter strategies.
   "session_id": "uuid-optional",
   "role": null,
   "tags": ["kpi"],
+  "tag_filters": [
+    { "key": "category", "value": "work", "op": "eq" },
+    { "key": "score",    "value": "0.7",  "op": "gte" }
+  ],
   "from_time": null,
   "to_time": null,
   "limit": 20,
@@ -412,15 +416,50 @@ Search memory via semantic/hybrid/filter strategies.
 }
 ```
 
+**`tag_filters` — structured tag filters**
+
+Each filter matches episodes whose `tags` array contains a `key:value` entry that
+satisfies the given operator.  Flat string tags (no colon) are also supported via
+`eq` and `ne`.  All filters are ANDed together.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `key` | string | Yes | Tag key (the part before `:` in `key:value` tags). |
+| `value` | string | Conditional | Tag value. Required for `gt`, `gte`, `lt`, `lte`, `prefix`. |
+| `op` | string | No (default `eq`) | One of: `eq`, `ne`, `gt`, `gte`, `lt`, `lte`, `exists`, `prefix`. |
+
+**Operators:**
+
+| `op` | Meaning |
+|------|---------|
+| `eq` | Episode has tag `key:value` (or any `key:*` tag if `value` is omitted). |
+| `ne` | Episode does NOT have tag `key:value`. |
+| `exists` | Episode has at least one `key:*` tag. |
+| `prefix` | Episode has a tag starting with `key:value`. |
+| `gt` / `gte` / `lt` / `lte` | Numeric comparison on the value portion of `key:value`. |
+
 **Response body (`200`)** includes `results`, `total`, `query_time_ms`.
 
 **Error codes:** `INVALID_TIME_RANGE`
 
 ```bash
+# Simple flat-tag search (backward-compatible)
 curl -X POST "$BASE_URL/memory/search" \
   -H "Authorization: Bearer $API_KEY_OR_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"query":"When do I send KPI reports?","session_id":"'$SESSION_ID'","limit":5}'
+
+# Structured tag filter: category=work AND score>=0.7
+curl -X POST "$BASE_URL/memory/search" \
+  -H "Authorization: Bearer $API_KEY_OR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": "KPI reports",
+    "tag_filters": [
+      {"key":"category","value":"work","op":"eq"},
+      {"key":"score","value":"0.7","op":"gte"}
+    ]
+  }'
 ```
 
 ### GET `/memory/diff`

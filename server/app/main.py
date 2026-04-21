@@ -182,13 +182,19 @@ def create_app() -> FastAPI:
     @app.exception_handler(RequestValidationError)
     async def validation_exception_handler(request: Request, exc: RequestValidationError):
         request_id = getattr(request.state, "request_id", "unknown")
-        logger.warning("Validation error", request_id=request_id, errors=exc.errors())
+        # Pydantic v2 may embed non-serializable objects in the error ctx (e.g. the
+        # original ValueError instance).  Strip ctx before JSON serialization.
+        sanitized = [
+            {k: v for k, v in e.items() if k not in ("ctx", "url")}
+            for e in exc.errors()
+        ]
+        logger.warning("Validation error", request_id=request_id, errors=sanitized)
         return error(
             code=VALIDATION_ERROR,
             message="Request validation failed",
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             request_id=request_id,
-            details={"errors": exc.errors()},
+            details={"errors": sanitized},
         )
 
     @app.exception_handler(StarletteHTTPException)

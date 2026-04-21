@@ -11,7 +11,7 @@ import httpx
 from tenacity import AsyncRetrying, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from .exceptions import AuthenticationError, NotFoundError, RateLimitError, RemembrError, ServerError
-from .models import CheckpointInfo, Episode, MemoryQueryResult, Session
+from .models import CheckpointInfo, Episode, MemoryQueryResult, Session, TagFilter
 
 
 class _RetryableServerError(ServerError):
@@ -304,6 +304,7 @@ class RemembrClient:
         query: str,
         session_id: str | None = None,
         tags: list[str] | None = None,
+        tag_filters: list[TagFilter] | None = None,
         from_time: datetime | None = None,
         to_time: datetime | None = None,
         limit: int = 20,
@@ -314,7 +315,8 @@ class RemembrClient:
         Args:
             query: Search text query.
             session_id: Optional session ID to scope the search.
-            tags: Optional list of tags to filter by.
+            tags: Optional list of flat tag strings for exact-match filtering (backward-compatible).
+            tag_filters: Optional structured tag filters with key, value, and comparison operator.
             from_time: Optional lower timestamp bound (inclusive).
             to_time: Optional upper timestamp bound (inclusive).
             limit: Maximum number of search results to return.
@@ -345,6 +347,8 @@ class RemembrClient:
             payload["from_time"] = from_time.isoformat()
         if to_time is not None:
             payload["to_time"] = to_time.isoformat()
+        if tag_filters:
+            payload["tag_filters"] = [tf.to_dict() for tf in tag_filters]
 
         data = await self.arequest("POST", "/memory/search", json=payload)
         return MemoryQueryResult.model_validate(data)

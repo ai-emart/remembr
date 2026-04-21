@@ -84,8 +84,10 @@ export interface SearchMemoryParams {
   query: string;
   /** Optional session scope for the search query. */
   sessionId?: string;
-  /** Optional tag filters. */
+  /** Optional flat tag strings for backward-compatible exact-match filtering. */
   tags?: string[];
+  /** Optional structured tag filters with key, value, and comparison operator. */
+  tagFilters?: TagFilter[];
   /** Optional lower timestamp bound. Serialized as ISO8601 when sent. */
   fromTime?: Date;
   /** Optional upper timestamp bound. Serialized as ISO8601 when sent. */
@@ -158,6 +160,16 @@ export interface ExportParams {
 
 /** JSON export result — an async iterable of episode objects. */
 export type JsonExportResult = AsyncIterable<Record<string, unknown>>;
+
+/** Structured tag filter for ``key:value`` tag matching. */
+export interface TagFilter {
+  /** Tag key (the part before the colon in ``key:value`` tags). */
+  key: string;
+  /** Tag value (the part after the colon). Required for ``gt``, ``gte``, ``lt``, ``lte``, and ``prefix`` ops. */
+  value?: string;
+  /** Comparison operator. Defaults to ``'eq'``. */
+  op?: 'eq' | 'ne' | 'gt' | 'gte' | 'lt' | 'lte' | 'exists' | 'prefix';
+}
 
 /** Idempotency options for mutating write methods. */
 export interface IdempotencyOptions {

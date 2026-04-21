@@ -30,6 +30,7 @@ from app.services.episodic import EpisodicMemory
 from app.services.forgetting import ForgettingService
 from app.services.scoping import MemoryScope, ScopeResolver
 from app.services.short_term import SessionMessage, ShortTermMemory
+from app.services.tag_filter import TagFilter, build_tag_filter_sql
 
 router = APIRouter(tags=["memory"])
 
@@ -100,6 +101,7 @@ class MemoryQueryRequest(BaseModel):
     session_id: UUID | None = None
     role: str | None = None
     tags: list[str] | None = None
+    tag_filters: list[TagFilter] | None = None
     from_time: datetime | None = None
     to_time: datetime | None = None
     limit: int = Field(default=20, ge=1, le=100)
@@ -242,6 +244,60 @@ class MemoryDiffResponse(BaseModel):
     count: int
 
 
+def _matches_tag_filters(tags: list[str], filters: list[TagFilter]) -> bool:
+    """Python-side tag filter evaluation for the filter_only / time-based query path."""
+    tag_set = set(tags)
+    for tf in filters:
+        prefix = f"{tf.key}:"
+        matching = [t for t in tag_set if t.startswith(prefix)]
+
+        if tf.op == "exists":
+            if not matching:
+                return False
+
+        elif tf.op == "eq":
+            target = f"{tf.key}:{tf.value}" if tf.value is not None else None
+            if target is not None:
+                if target not in tag_set:
+                    return False
+            else:
+                if not matching:
+                    return False
+
+        elif tf.op == "ne":
+            target = f"{tf.key}:{tf.value}" if tf.value is not None else None
+            if target is not None:
+                if target in tag_set:
+                    return False
+            else:
+                if matching:
+                    return False
+
+        elif tf.op == "prefix":
+            prefix_val = f"{tf.key}:{tf.value}"
+            if not any(t.startswith(prefix_val) for t in tag_set):
+                return False
+
+        elif tf.op in ("gt", "gte", "lt", "lte"):
+            threshold = float(tf.value)  # type: ignore[arg-type]
+            found = False
+            for t in matching:
+                raw = t[len(prefix):]
+                try:
+                    num = float(raw)
+                except ValueError:
+                    continue
+                ops = {"gt": num > threshold, "gte": num >= threshold,
+                       "lt": num < threshold, "lte": num <= threshold}
+                if ops[tf.op]:
+                    found = True
+                    break
+            if not found:
+                return False
+
+    return True
+
+
 def _apply_session_scope_filters(query, scope: MemoryScope):
     return (
         query.where(Session.org_id == UUID(scope.org_id))
@@ -287,7 +343,14 @@ class MemoryQueryEngine:
 
         if request.query:
             has_filters = any(
-                [request.tags, request.role, request.from_time, request.to_time, request.session_id]
+                [
+                    request.tags,
+                    request.tag_filters,
+                    request.role,
+                    request.from_time,
+                    request.to_time,
+                    request.session_id,
+                ]
             )
             if has_filters:
                 try:
@@ -295,6 +358,7 @@ class MemoryQueryEngine:
                         scope=scope,
                         query=request.query,
                         tags=request.tags,
+                        tag_filters=request.tag_filters,
                         from_time=request.from_time,
                         to_time=request.to_time,
                         role=request.role,
@@ -305,6 +369,7 @@ class MemoryQueryEngine:
                     semantic = await self.episodic.search_semantic(
                         scope=scope,
                         query=request.query,
+                        tag_filters=request.tag_filters,
                         limit=request.limit,
                     )
                     _filtered = []
@@ -358,6 +423,11 @@ class MemoryQueryEngine:
             if request.tags:
                 filtered = [
                     ep for ep in filtered if set(request.tags).intersection(set(ep.tags or []))
+                ]
+            if request.tag_filters:
+                filtered = [
+                    ep for ep in filtered
+                    if _matches_tag_filters(ep.tags or [], request.tag_filters)
                 ]
 
             for ep in filtered[request.offset : request.offset + request.limit]:

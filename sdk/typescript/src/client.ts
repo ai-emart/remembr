@@ -12,6 +12,7 @@ import {
   SearchMemoryParams,
   Session,
   StoreMemoryParams,
+  TagFilter,
 } from './types';
 
 const VALID_SEARCH_MODES = new Set(['semantic', 'hybrid', 'filter_only']);
@@ -181,11 +182,18 @@ export class RemembrClient {
       throw new Error('fromTime must be less than or equal to toTime');
     }
 
+    const tagFilters = params.tagFilters?.map((tf: TagFilter) => {
+      const out: Record<string, string> = { key: tf.key, op: tf.op ?? 'eq' };
+      if (tf.value !== undefined) out.value = tf.value;
+      return out;
+    });
+
     const data = await this.http.request<MemoryQueryResult>('POST', '/memory/search', {
       body: {
         query: params.query,
         session_id: params.sessionId,
         tags: params.tags,
+        tag_filters: tagFilters,
         from_time: params.fromTime?.toISOString(),
         to_time: params.toTime?.toISOString(),
         limit,
