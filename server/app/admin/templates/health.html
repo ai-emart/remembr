@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}Health — Remembr Admin{% endblock %}
+
+{% block content %}
+<h2>System Health</h2>
+<p style="color:var(--muted);font-size:11px;margin-bottom:1rem">Auto-refreshes every 5 seconds.</p>
+
+<div class="card">
+  <div class="card-header">Status</div>
+  {% include "_health_cards.html" %}
+</div>
+{% endblock %}

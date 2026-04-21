@@ -1,0 +1,37 @@
+{% if results %}
+<div class="card">
+  <div class="card-header">
+    {{ results|length }} result{% if results|length != 1 %}s{% endif %} for &ldquo;{{ query }}&rdquo;
+  </div>
+  <div class="tbl-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Content</th>
+          <th>Role</th>
+          <th>Session</th>
+          <th>Tags</th>
+          <th>Created</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in results %}
+        <tr>
+          <td title="{{ r.content }}">
+            <span class="content-truncate">{{ r.content }}</span>
+          </td>
+          <td><span class="badge badge-{{ r.role }}">{{ r.role }}</span></td>
+          <td title="{{ r.session_id }}">
+            {% if r.session_id %}{{ r.session_id[:8] }}…{% else %}—{% endif %}
+          </td>
+          <td>{% for t in r.tags %}<span class="tag">{{ t }}</span>{% endfor %}</td>
+          <td style="white-space:nowrap">{{ r.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% elif query %}
+<div class="empty">No results for &ldquo;{{ query }}&rdquo;</div>
+{% endif %}

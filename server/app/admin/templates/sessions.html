@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block title %}Sessions — Remembr Admin{% endblock %}
+
+{% block content %}
+<div class="two-col">
+
+  <!-- ── Session list ── -->
+  <div class="card">
+    <div class="card-header">
+      <span>Sessions <span style="font-weight:400;color:var(--muted)">({{ total }})</span></span>
+    </div>
+    <div class="tbl-wrap">
+      {% if sessions %}
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Messages</th>
+            <th>Last activity</th>
+            <th>Created</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for s in sessions %}
+          <tr
+            class="clickable"
+            hx-get="/admin/sessions/{{ s.id }}"
+            hx-target="#detail-panel"
+            hx-swap="innerHTML"
+            hx-indicator="#detail-panel"
+          >
+            <td title="{{ s.id }}">{{ s.id[:8] }}…</td>
+            <td>{{ s.message_count }}</td>
+            <td>{% if s.last_activity %}{{ s.last_activity.strftime('%Y-%m-%d %H:%M') }}{% else %}—{% endif %}</td>
+            <td>{{ s.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div class="empty">No sessions found for this org.</div>
+      {% endif %}
+    </div>
+
+    <!-- Pagination -->
+    {% if total > per_page %}
+    <div class="pagination">
+      <span class="page-info">Page {{ page }} of {{ ((total - 1) // per_page) + 1 }} &bull; {{ total }} total</span>
+      {% if page > 1 %}
+      <a href="/admin/sessions?page={{ page - 1 }}" class="btn btn-ghost">&#8592; Prev</a>
+      {% endif %}
+      {% if page * per_page < total %}
+      <a href="/admin/sessions?page={{ page + 1 }}" class="btn btn-ghost">Next &#8594;</a>
+      {% endif %}
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- ── Detail panel ── -->
+  <div id="detail-panel" class="card" style="min-height:200px">
+    <div class="card-header">Memory detail</div>
+    <div class="empty">Click a session to view its memories.</div>
+  </div>
+
+</div>
+{% endblock %}

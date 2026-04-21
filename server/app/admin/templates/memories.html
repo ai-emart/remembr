@@ -1,0 +1,51 @@
+<div class="card-header">
+  Session <code style="font-size:11px">{{ session_id[:8] }}…</code>
+  &nbsp;<span style="color:var(--muted);font-weight:400">({{ episodes|length }}{% if has_more %}+{% endif %} episodes)</span>
+</div>
+<div class="tbl-wrap">
+  {% if episodes %}
+  <table>
+    <thead>
+      <tr>
+        <th>Time</th>
+        <th>Role</th>
+        <th>Content</th>
+        <th>Tags</th>
+        <th>Embedding</th>
+      </tr>
+    </thead>
+    <tbody id="memories-tbody">
+      {% for ep in episodes %}
+      <tr>
+        <td style="white-space:nowrap">{{ ep.created_at.strftime('%H:%M:%S') }}</td>
+        <td>
+          <span class="badge badge-{{ ep.role }}">{{ ep.role }}</span>
+        </td>
+        <td title="{{ ep.content }}">
+          <span class="content-truncate">{{ ep.content }}</span>
+        </td>
+        <td>
+          {% for t in ep.tags %}<span class="tag">{{ t }}</span>{% endfor %}
+        </td>
+        <td class="status-{{ ep.embedding_status }}">{{ ep.embedding_status }}</td>
+      </tr>
+      {% endfor %}
+
+      {% if has_more %}
+      <tr id="load-more-trigger">
+        <td colspan="5" class="load-more-cell">
+          <button
+            class="btn btn-ghost"
+            hx-get="/admin/sessions/{{ session_id }}/memories?offset={{ next_offset }}"
+            hx-target="#load-more-trigger"
+            hx-swap="outerHTML"
+          >Load more</button>
+        </td>
+      </tr>
+      {% endif %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty">No episodes in this session.</div>
+  {% endif %}
+</div>

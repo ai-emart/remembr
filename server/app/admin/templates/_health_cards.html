@@ -1,0 +1,45 @@
+<div
+  id="health-cards"
+  class="health-grid"
+  hx-get="/admin/health"
+  hx-trigger="every 5s"
+  hx-swap="outerHTML"
+>
+  <!-- PostgreSQL -->
+  <div class="health-card">
+    <div class="service-name">PostgreSQL</div>
+    <div class="status-dot">{% if pg_ok %}&#9989;{% else %}&#10060;{% endif %}</div>
+    <div class="status-label" style="color:{% if pg_ok %}var(--success){% else %}var(--error){% endif %}">
+      {% if pg_ok %}connected{% else %}unreachable{% endif %}
+    </div>
+    {% if pg_error %}
+    <div class="status-error">{{ pg_error[:120] }}</div>
+    {% endif %}
+  </div>
+
+  <!-- Redis -->
+  <div class="health-card">
+    <div class="service-name">Redis</div>
+    <div class="status-dot">{% if redis_ok %}&#9989;{% else %}&#10060;{% endif %}</div>
+    <div class="status-label" style="color:{% if redis_ok %}var(--success){% else %}var(--error){% endif %}">
+      {% if redis_ok %}connected{% else %}unreachable{% endif %}
+    </div>
+    {% if redis_error %}
+    <div class="status-error">{{ redis_error[:120] }}</div>
+    {% endif %}
+  </div>
+
+  <!-- Embedding provider -->
+  <div class="health-card">
+    <div class="service-name">Embeddings</div>
+    <div class="status-dot">&#128200;</div>
+    <div class="status-label" style="color:var(--muted)">{{ embedding_provider }}</div>
+  </div>
+
+  <!-- Environment -->
+  <div class="health-card">
+    <div class="service-name">Environment</div>
+    <div class="status-dot">&#127760;</div>
+    <div class="status-label" style="color:var(--muted)">{{ environment }}</div>
+  </div>
+</div>

@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}Search — Remembr Admin{% endblock %}
+
+{% block content %}
+<h2>Search Memories</h2>
+
+<div class="card" style="margin-bottom:1.5rem">
+  <div class="card-header">Query</div>
+  <div style="padding:1rem">
+    <form
+      hx-post="/admin/search"
+      hx-target="#search-results"
+      hx-swap="innerHTML"
+      hx-indicator="#search-spinner"
+    >
+      <div class="form-group">
+        <label for="q">Search query</label>
+        <input
+          id="q"
+          type="search"
+          name="query"
+          placeholder="e.g. user preferences"
+          value="{{ query }}"
+          autocomplete="off"
+        >
+      </div>
+      <div class="form-row">
+        <div class="form-group" style="margin-bottom:0">
+          <label for="session-filter">Session filter</label>
+          <select id="session-filter" name="session_filter">
+            <option value="">All sessions</option>
+            {% for s in sessions %}
+            <option value="{{ s.id }}">{{ s.id[:8] }}… ({{ s.message_count }} msgs)</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group" style="margin-bottom:0">
+          <label for="tag-filter">Tags (comma-separated)</label>
+          <input id="tag-filter" type="text" name="tag_filter" placeholder="e.g. preference, ui">
+        </div>
+        <button type="submit" class="btn">
+          Search
+          <span id="search-spinner" class="htmx-indicator"> &#8987;</span>
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div id="search-results">
+  {% if query %}
+    {% include "_search_results.html" %}
+  {% else %}
+  <div class="empty">Enter a query above to search memories.</div>
+  {% endif %}
+</div>
+{% endblock %}

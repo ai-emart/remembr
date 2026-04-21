@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}Remembr Admin{% endblock %}</title>
+  <link rel="stylesheet" href="/admin/static/admin.css">
+  <script src="/admin/static/htmx.min.js" defer></script>
+  <script src="/admin/static/alpine.min.js" defer></script>
+</head>
+<body
+  x-data="{
+    dark: localStorage.getItem('adminDark') === 'true',
+    orgId: localStorage.getItem('adminOrgId') || '',
+    toggleDark() {
+      this.dark = !this.dark;
+      localStorage.setItem('adminDark', String(this.dark));
+      document.documentElement.classList.toggle('dark', this.dark);
+    },
+    applyOrg() {
+      localStorage.setItem('adminOrgId', this.orgId.trim());
+      window.location.reload();
+    }
+  }"
+  x-init="document.documentElement.classList.toggle('dark', dark)"
+  :class="dark ? 'dark' : ''"
+>
+
+<nav>
+  <a class="brand" href="/admin">remembr/admin</a>
+  <a href="/admin/sessions" {% if request.url.path.startswith('/admin/sessions') or request.url.path == '/admin' or request.url.path == '/admin/' %}class="active"{% endif %}>Sessions</a>
+  <a href="/admin/search"   {% if request.url.path == '/admin/search' %}class="active"{% endif %}>Search</a>
+  <a href="/admin/health"   {% if request.url.path == '/admin/health' %}class="active"{% endif %}>Health</a>
+
+  <div class="spacer"></div>
+
+  <form class="org-form" @submit.prevent="applyOrg()">
+    <label for="org-input">Org ID</label>
+    <input
+      id="org-input"
+      class="org-input"
+      type="text"
+      placeholder="auto (first org)"
+      x-model="orgId"
+      @keydown.enter.prevent="applyOrg()"
+    >
+    <button type="submit" class="btn-ghost btn" style="font-size:11px;padding:.2rem .55rem">Apply</button>
+  </form>
+
+  <button class="btn-icon" @click="toggleDark()" :title="dark ? 'Light mode' : 'Dark mode'">
+    <span x-show="!dark">&#9790;</span>
+    <span x-show="dark">&#9788;</span>
+  </button>
+</nav>
+
+<main>
+  {% block content %}{% endblock %}
+</main>
+
+<script>
+  /* Pass X-Admin-Org-ID header with every HTMX request */
+  document.addEventListener('htmx:configRequest', function(e) {
+    var orgId = localStorage.getItem('adminOrgId') || '';
+    if (orgId) e.detail.headers['X-Admin-Org-ID'] = orgId;
+  });
+</script>
+
+</body>
+</html>

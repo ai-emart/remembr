@@ -259,6 +259,20 @@ def create_app() -> FastAPI:
     # Mount versioned API router
     app.include_router(v1_router, prefix=settings.api_v1_prefix)
 
+    # Admin UI — dev/staging only, never production
+    if not settings.is_production:
+        from pathlib import Path
+
+        from fastapi.staticfiles import StaticFiles
+
+        from app.admin.router import router as admin_router
+
+        _static_dir = Path(__file__).parent / "admin" / "static"
+        app.mount("/admin/static", StaticFiles(directory=str(_static_dir)), name="admin-static")
+        app.include_router(admin_router)
+    else:
+        logger.warning("Admin UI disabled in production environment")
+
     return app
 
 
