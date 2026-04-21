@@ -102,7 +102,8 @@ async def main():
         query="When should I send notifications?",
         session_id=session.session_id,
         limit=5,
-        mode="hybrid"
+        search_mode="hybrid",
+        weights={"semantic": 0.6, "keyword": 0.3, "recency": 0.1},
     )
 
     for memory in results.results:
@@ -142,7 +143,8 @@ async function main() {
     query: 'What are the user UI preferences?',
     sessionId: session.session_id,
     limit: 5,
-    mode: 'hybrid'
+    searchMode: 'hybrid',
+    weights: { semantic: 0.6, keyword: 0.3, recency: 0.1 }
   });
 
   results.results.forEach(memory => {

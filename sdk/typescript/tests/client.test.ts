@@ -143,11 +143,12 @@ describe('RemembrClient', () => {
       fromTime,
       toTime,
       limit: 10,
-      mode: 'semantic',
+      searchMode: 'semantic',
+      weights: { semantic: 0.6, keyword: 0.3, recency: 0.1 },
     });
 
     const body1 = JSON.parse((mock.calls[0].init?.body as string) ?? '{}');
-    expect(body1).toMatchObject({ query: 'minimal', limit: 20, mode: 'hybrid' });
+    expect(body1).toMatchObject({ query: 'minimal', limit: 20, search_mode: 'hybrid' });
 
     const body2 = JSON.parse((mock.calls[1].init?.body as string) ?? '{}');
     expect(body2).toEqual({
@@ -157,11 +158,12 @@ describe('RemembrClient', () => {
       from_time: fromTime.toISOString(),
       to_time: toTime.toISOString(),
       limit: 10,
-      mode: 'semantic',
+      search_mode: 'semantic',
+      weights: { semantic: 0.6, keyword: 0.3, recency: 0.1 },
     });
 
-    await expect(client.search({ query: 'x', mode: 'bad' as any })).rejects.toThrow(
-      'mode must be one of: semantic, hybrid, filter_only'
+    await expect(client.search({ query: 'x', searchMode: 'bad' as any })).rejects.toThrow(
+      'searchMode must be one of: semantic, keyword, hybrid'
     );
     await expect(client.search({ query: 'x', limit: 0 })).rejects.toThrow('limit must be greater than 0');
     await expect(client.search({ query: 'x', fromTime: toTime, toTime: fromTime })).rejects.toThrow(

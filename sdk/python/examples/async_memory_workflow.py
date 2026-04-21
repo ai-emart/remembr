@@ -18,7 +18,8 @@ async def main() -> None:
         result = await client.search(
             query="billing preference",
             session_id=session.session_id,
-            mode="hybrid",
+            search_mode="hybrid",
+            weights={"semantic": 0.6, "keyword": 0.3, "recency": 0.1},
         )
         print(f"Found {result.total} result(s)")
 

@@ -394,7 +394,7 @@ curl -X POST "$BASE_URL/memory" \
 ```
 
 ### POST `/memory/search`
-Search memory via semantic/hybrid/filter strategies.
+Search memory via semantic, keyword, or hybrid strategies.
 
 **Auth required:** JWT/API key
 
@@ -412,9 +412,40 @@ Search memory via semantic/hybrid/filter strategies.
   "from_time": null,
   "to_time": null,
   "limit": 20,
-  "offset": 0
+  "offset": 0,
+  "search_mode": "hybrid",
+  "weights": {
+    "semantic": 0.6,
+    "keyword": 0.3,
+    "recency": 0.1
+  }
 }
 ```
+
+**Search modes**
+
+| Mode | What it does | Best for |
+|------|--------------|----------|
+| `semantic` | Vector similarity only. | Paraphrases, conceptual matches, fuzzy recall. |
+| `keyword` | PostgreSQL full-text lookup with `plainto_tsquery('english', ...)` and `ts_rank_cd(...)`. | Exact identifiers, SKUs, error codes, jargon. |
+| `hybrid` | Combines semantic score, keyword score, and recency score. | General-purpose retrieval with stronger recall across mixed query types. |
+
+`search_vector` currently uses PostgreSQL's `english` text search config for every org. If you need per-org dictionaries later, keep the trigger function but switch it to read an org-level config and rebuild `search_vector` for that org.
+
+**Hybrid weights**
+
+`weights` is optional and only used when `search_mode` is `hybrid`. The three values must sum to `1.0`.
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `semantic` | `0.6` | Weight for vector similarity. |
+| `keyword` | `0.3` | Weight for full-text ranking. |
+| `recency` | `0.1` | Weight for recency, using `exp(-hours_since_creation / 168)`. |
+
+Cookbook:
+- Support and operations logs: start with `{"semantic": 0.4, "keyword": 0.5, "recency": 0.1}` to favor exact codes, SKUs, and ticket identifiers.
+- Personal assistant memory: start with `{"semantic": 0.7, "keyword": 0.1, "recency": 0.2}` to favor paraphrases and softer recall of user preferences.
+- Fast-moving incident response: start with `{"semantic": 0.4, "keyword": 0.2, "recency": 0.4}` so recent but slightly imperfect matches can outrank stale exact hits.
 
 **`tag_filters` — structured tag filters**
 
@@ -447,7 +478,7 @@ satisfies the given operator.  Flat string tags (no colon) are also supported vi
 curl -X POST "$BASE_URL/memory/search" \
   -H "Authorization: Bearer $API_KEY_OR_TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"query":"When do I send KPI reports?","session_id":"'$SESSION_ID'","limit":5}'
+  -d '{"query":"When do I send KPI reports?","session_id":"'$SESSION_ID'","limit":5,"search_mode":"hybrid"}'
 
 # Structured tag filter: category=work AND score>=0.7
 curl -X POST "$BASE_URL/memory/search" \
@@ -459,6 +490,22 @@ curl -X POST "$BASE_URL/memory/search" \
       {"key":"category","value":"work","op":"eq"},
       {"key":"score","value":"0.7","op":"gte"}
     ]
+  }'
+
+# Keyword-first retrieval for exact identifiers
+curl -X POST "$BASE_URL/memory/search" \
+  -H "Authorization: Bearer $API_KEY_OR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"query":"ERR_1234","search_mode":"keyword","limit":3}'
+
+# Hybrid retrieval with custom weights
+curl -X POST "$BASE_URL/memory/search" \
+  -H "Authorization: Bearer $API_KEY_OR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": "recent billing incident",
+    "search_mode": "hybrid",
+    "weights": {"semantic": 0.4, "keyword": 0.2, "recency": 0.4}
   }'
 ```
 

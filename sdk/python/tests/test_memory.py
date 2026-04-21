@@ -55,7 +55,12 @@ async def test_search_with_filters(mock_client, sample_episode) -> None:
         )
     )
 
-    response = await client.search(query="bill", tags=["billing"], mode="filter_only")
+    response = await client.search(
+        query="bill",
+        tags=["billing"],
+        search_mode="keyword",
+        weights={"semantic": 0.6, "keyword": 0.3, "recency": 0.1},
+    )
     assert len(response.results) == 1
     assert response.results[0].tags == ["billing"]
 

@@ -5,12 +5,14 @@ from __future__ import annotations
 import asyncio
 import re
 import time
+import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, Literal
 
 from app.services.episodic import EpisodeSearchResult, EpisodicMemory
 from app.services.scoping import MemoryScope
+from app.services.search_config import SearchMode, SearchWeights
 
 if TYPE_CHECKING:
     from app.services.short_term import SessionMessage, ShortTermMemory
@@ -33,7 +35,8 @@ class MemoryQueryRequest:
     include_episodic: bool = True
     limit: int = 20
     score_threshold: float = 0.65
-    search_mode: Literal["semantic", "hybrid", "filter_only"] = "hybrid"
+    search_mode: SearchMode = "hybrid"
+    weights: SearchWeights | None = None
 
 
 @dataclass
@@ -92,9 +95,6 @@ class MemoryQueryEngine:
         messages = await self.short_term.get_context(request.session_id)
         filtered = [msg for msg in messages if self._message_matches(msg, request)]
 
-        if request.search_mode == "filter_only":
-            return sorted(filtered, key=lambda msg: msg.timestamp, reverse=True)[: request.limit]
-
         return sorted(
             filtered,
             key=lambda msg: (self._message_score(msg, request.query), msg.timestamp),
@@ -113,6 +113,17 @@ class MemoryQueryEngine:
                 limit=request.limit,
                 score_threshold=request.score_threshold,
             )
+        elif request.search_mode == "keyword" and request.query:
+            results = await self.episodic.search_keyword(
+                scope=scope,
+                query=request.query,
+                tags=request.tags,
+                from_time=request.from_time,
+                to_time=request.to_time,
+                role=request.role,
+                session_id=uuid.UUID(request.session_id) if request.session_id else None,
+                limit=request.limit,
+            )
         elif request.search_mode == "hybrid" and request.query:
             results = await self.episodic.search_hybrid(
                 scope=scope,
@@ -121,8 +132,10 @@ class MemoryQueryEngine:
                 from_time=request.from_time,
                 to_time=request.to_time,
                 role=request.role,
+                session_id=uuid.UUID(request.session_id) if request.session_id else None,
                 limit=request.limit,
                 score_threshold=request.score_threshold,
+                weights=request.weights,
             )
         else:
             if request.session_id:
@@ -144,13 +157,6 @@ class MemoryQueryEngine:
             ]
 
         filtered = [item for item in results if self._episode_matches(item, request)]
-        if request.search_mode == "filter_only":
-            return sorted(
-                filtered,
-                key=lambda item: item.episode.created_at,
-                reverse=True,
-            )[: request.limit]
-
         return sorted(
             filtered,
             key=lambda item: (item.similarity_score, item.episode.created_at),
@@ -184,10 +190,7 @@ class MemoryQueryEngine:
             for item in deduped_episodic
         )
 
-        if request.search_mode == "filter_only":
-            merged.sort(key=lambda item: item.created_at, reverse=True)
-        else:
-            merged.sort(key=lambda item: (item.score, item.created_at), reverse=True)
+        merged.sort(key=lambda item: (item.score, item.created_at), reverse=True)
 
         return merged[: request.limit]
 
@@ -209,7 +212,7 @@ class MemoryQueryEngine:
             return False
         if request.to_time and message.timestamp > request.to_time:
             return False
-        if request.search_mode != "filter_only" and request.query:
+        if request.query:
             return request.query.lower() in message.content.lower()
         return True
 

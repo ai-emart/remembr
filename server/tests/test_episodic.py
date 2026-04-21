@@ -11,6 +11,7 @@ import pytest
 from app.services.embeddings import EmbeddingProvider, set_embedding_provider_override
 from app.services.episodic import EpisodicMemory
 from app.services.scoping import MemoryScope
+from app.services.search_config import SearchWeights
 
 
 class _FakeProvider(EmbeddingProvider):
@@ -208,7 +209,74 @@ async def test_search_hybrid_combines_semantic_with_filters(scope: MemoryScope):
     assert results[0].similarity_score == pytest.approx(0.88)
     assert fake_db.last_params["tags"] == ["support"]
     assert fake_db.last_params["role"] == "assistant"
-    assert "WITH semantic_candidates" in str(fake_db.last_sql)
+    assert "WITH filtered_episodes" in str(fake_db.last_sql)
+    assert "ts_rank_cd" in str(fake_db.last_sql)
+    assert "EXP(" in str(fake_db.last_sql)
+
+
+@pytest.mark.asyncio
+async def test_search_keyword_uses_tsquery_and_rank(scope: MemoryScope):
+    row = type("Row", (), dict(
+        id=uuid.uuid4(),
+        org_id=uuid.UUID(scope.org_id),
+        team_id=None,
+        user_id=None,
+        agent_id=None,
+        session_id=None,
+        role="assistant",
+        content="SKU ZX-9000 is backordered until Friday.",
+        tags=["inventory"],
+        metadata={"source": "erp"},
+        created_at=datetime(2026, 1, 5, tzinfo=UTC),
+        similarity_score=0.52,
+    ))()
+
+    fake_db = _FakeDB(rows=[row])
+    svc = EpisodicMemory(db=fake_db)
+
+    results = await svc.search_keyword(
+        scope=scope,
+        query="ZX-9000",
+        tags=["inventory"],
+        limit=4,
+    )
+
+    assert len(results) == 1
+    assert results[0].similarity_score == pytest.approx(0.52)
+    assert fake_db.last_params["query"] == "ZX-9000"
+    assert "plainto_tsquery('english', :query)" in str(fake_db.last_sql)
+    assert "ts_rank_cd" in str(fake_db.last_sql)
+    assert "search_vector @@" in str(fake_db.last_sql)
+
+
+@pytest.mark.asyncio
+async def test_search_hybrid_passes_weight_params(scope: MemoryScope):
+    row = type("Row", (), dict(
+        id=uuid.uuid4(),
+        org_id=uuid.UUID(scope.org_id),
+        team_id=None,
+        user_id=None,
+        agent_id=None,
+        session_id=None,
+        role="assistant",
+        content="Recent but slightly less exact match.",
+        tags=["support"],
+        metadata={},
+        created_at=datetime(2026, 1, 6, tzinfo=UTC),
+        similarity_score=0.67,
+    ))()
+
+    fake_db = _FakeDB(rows=[row])
+    fake_provider = _FakeProvider(vector=[0.2, 0.6, 0.8])
+    set_embedding_provider_override(fake_provider)
+
+    svc = EpisodicMemory(db=fake_db)
+    weights = SearchWeights(semantic=0.2, keyword=0.2, recency=0.6)
+    await svc.search_hybrid(scope=scope, query="recent support issue", limit=2, weights=weights)
+
+    assert fake_db.last_params["semantic_weight"] == pytest.approx(0.2)
+    assert fake_db.last_params["keyword_weight"] == pytest.approx(0.2)
+    assert fake_db.last_params["recency_weight"] == pytest.approx(0.6)
 
 
 @pytest.mark.asyncio

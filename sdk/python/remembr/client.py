@@ -11,7 +11,7 @@ import httpx
 from tenacity import AsyncRetrying, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from .exceptions import AuthenticationError, NotFoundError, RateLimitError, RemembrError, ServerError
-from .models import CheckpointInfo, Episode, MemoryQueryResult, Session, TagFilter
+from .models import CheckpointInfo, Episode, MemoryQueryResult, SearchWeights, Session, TagFilter
 
 
 class _RetryableServerError(ServerError):
@@ -21,7 +21,7 @@ class _RetryableServerError(ServerError):
 class RemembrClient:
     """Remembr API client with async-first APIs and sync wrappers."""
 
-    VALID_SEARCH_MODES = {"semantic", "hybrid", "filter_only"}
+    VALID_SEARCH_MODES = {"semantic", "keyword", "hybrid"}
 
     def __init__(
         self,
@@ -308,7 +308,9 @@ class RemembrClient:
         from_time: datetime | None = None,
         to_time: datetime | None = None,
         limit: int = 20,
-        mode: str = "hybrid",
+        search_mode: str = "hybrid",
+        weights: SearchWeights | dict[str, float] | None = None,
+        mode: str | None = None,
     ) -> MemoryQueryResult:
         """Search memory episodes.
 
@@ -320,7 +322,9 @@ class RemembrClient:
             from_time: Optional lower timestamp bound (inclusive).
             to_time: Optional upper timestamp bound (inclusive).
             limit: Maximum number of search results to return.
-            mode: Search mode, one of ``semantic``, ``hybrid``, or ``filter_only``.
+            search_mode: Search mode, one of ``semantic``, ``keyword``, or ``hybrid``.
+            weights: Optional hybrid ranking weights. Only used in ``hybrid`` mode.
+            mode: Deprecated alias for ``search_mode``.
 
         Returns:
             A :class:`~remembr.models.MemoryQueryResult` object with matches and metadata.
@@ -330,16 +334,22 @@ class RemembrClient:
             self._require_non_empty(session_id, "session_id")
         if limit < 1:
             raise ValueError("limit must be greater than 0")
-        if mode not in self.VALID_SEARCH_MODES:
-            raise ValueError("mode must be one of: semantic, hybrid, filter_only")
+        resolved_search_mode = mode or search_mode
+        if resolved_search_mode not in self.VALID_SEARCH_MODES:
+            raise ValueError("search_mode must be one of: semantic, keyword, hybrid")
         if from_time and to_time and from_time > to_time:
             raise ValueError("from_time must be less than or equal to to_time")
+        resolved_weights: SearchWeights | None = None
+        if weights is not None:
+            resolved_weights = (
+                weights if isinstance(weights, SearchWeights) else SearchWeights.model_validate(weights)
+            )
 
         payload: dict[str, Any] = {
             "query": query,
             "tags": tags,
             "limit": limit,
-            "mode": mode,
+            "search_mode": resolved_search_mode,
         }
         if session_id:
             payload["session_id"] = session_id
@@ -349,6 +359,8 @@ class RemembrClient:
             payload["to_time"] = to_time.isoformat()
         if tag_filters:
             payload["tag_filters"] = [tf.to_dict() for tf in tag_filters]
+        if resolved_weights is not None:
+            payload["weights"] = resolved_weights.model_dump()
 
         data = await self.arequest("POST", "/memory/search", json=payload)
         return MemoryQueryResult.model_validate(data)

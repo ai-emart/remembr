@@ -55,7 +55,8 @@ async def main() -> None:
             query="When should updates be sent?",
             session_id=session.session_id,
             limit=3,
-            mode="hybrid",
+            search_mode="hybrid",
+            weights={"semantic": 0.6, "keyword": 0.3, "recency": 0.1},
         )
 
         for item in result.results:
@@ -94,7 +95,8 @@ async function main() {
     query: 'Which database stack do I prefer?',
     sessionId: session.session_id,
     limit: 3,
-    mode: 'hybrid',
+    searchMode: 'hybrid',
+    weights: { semantic: 0.6, keyword: 0.3, recency: 0.1 },
   });
 
   for (const item of result.results) {

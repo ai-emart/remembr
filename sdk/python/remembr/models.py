@@ -45,6 +45,19 @@ class TagFilter(BaseModel):
         return d
 
 
+class SearchWeights(BaseModel):
+    semantic: float = Field(default=0.6, ge=0.0, le=1.0)
+    keyword: float = Field(default=0.3, ge=0.0, le=1.0)
+    recency: float = Field(default=0.1, ge=0.0, le=1.0)
+
+    @model_validator(mode="after")
+    def _validate_total(self) -> "SearchWeights":
+        total = self.semantic + self.keyword + self.recency
+        if abs(total - 1.0) > 1e-9:
+            raise ValueError("weights.semantic + weights.keyword + weights.recency must sum to 1.0")
+        return self
+
+
 class Session(BaseModel):
     request_id: str
     session_id: str

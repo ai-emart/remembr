@@ -7,13 +7,15 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import text
+from sqlalchemy import ARRAY, DateTime, String, bindparam, text
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.models import Episode
 from app.repositories import episode_repo
 from app.services.embeddings import EmbeddingProvider, get_embedding_provider
 from app.services.scoping import MemoryScope
+from app.services.search_config import SearchWeights
 from app.services.tag_filter import TagFilter, build_tag_filter_sql
 
 
@@ -237,8 +239,10 @@ class EpisodicMemory:
         session_id: uuid.UUID | None = None,
         limit: int = 10,
         score_threshold: float = 0.65,
+        weights: SearchWeights | None = None,
     ) -> list[EpisodeSearchResult]:
-        """Run one-roundtrip semantic + metadata search using a CTE."""
+        """Run one-roundtrip semantic + keyword + recency search using a CTE."""
+        resolved_weights = weights or SearchWeights()
         query_vector, _ = await self._provider.generate_embedding(query)
         vector_literal = _to_pgvector_literal(query_vector)
 
@@ -247,45 +251,118 @@ class EpisodicMemory:
 
         sql = text(
             f"""
-            WITH semantic_candidates AS (
+            WITH filtered_episodes AS (
                 SELECT
-                    emb.episode_id,
+                    e.id,
+                    e.org_id,
+                    e.team_id,
+                    e.user_id,
+                    e.agent_id,
+                    e.session_id,
+                    e.role,
+                    e.content,
+                    e.tags,
+                    e.metadata,
+                    e.created_at,
+                    e.search_vector
+                FROM episodes e
+                WHERE e.org_id = :org_id
+                  AND e.team_id IS NOT DISTINCT FROM :team_id
+                  AND e.user_id IS NOT DISTINCT FROM :user_id
+                  AND e.agent_id IS NOT DISTINCT FROM :agent_id
+                  AND e.deleted_at IS NULL
+                  AND (
+                      CAST(:tags AS VARCHAR[]) IS NULL
+                      OR e.tags && CAST(:tags AS VARCHAR[])
+                  )
+                  AND (
+                      CAST(:from_time AS TIMESTAMPTZ) IS NULL
+                      OR e.created_at >= CAST(:from_time AS TIMESTAMPTZ)
+                  )
+                  AND (
+                      CAST(:to_time AS TIMESTAMPTZ) IS NULL
+                      OR e.created_at <= CAST(:to_time AS TIMESTAMPTZ)
+                  )
+                  AND (
+                      CAST(:role AS VARCHAR) IS NULL
+                      OR e.role = CAST(:role AS VARCHAR)
+                  )
+                  AND (
+                      CAST(:session_id AS UUID) IS NULL
+                      OR e.session_id = CAST(:session_id AS UUID)
+                  ){tf_clause}
+            ),
+            keyword_query AS (
+                SELECT plainto_tsquery('english', :query) AS ts_query
+            ),
+            semantic_candidates AS (
+                SELECT
+                    fe.id AS episode_id,
                     1 - (emb.vector <=> '{vector_literal}'::vector) AS similarity_score
                 FROM embeddings emb
+                JOIN filtered_episodes fe ON fe.id = emb.episode_id
                 WHERE emb.org_id = :org_id
                   AND emb.deleted_at IS NULL
                   AND 1 - (emb.vector <=> '{vector_literal}'::vector) >= :score_threshold
                 ORDER BY similarity_score DESC
                 LIMIT 50
+            ),
+            keyword_candidates AS (
+                SELECT
+                    fe.id AS episode_id,
+                    ts_rank_cd(fe.search_vector, kq.ts_query) AS bm25_score
+                FROM filtered_episodes fe
+                CROSS JOIN keyword_query kq
+                WHERE kq.ts_query <> ''::tsquery
+                  AND fe.search_vector @@ kq.ts_query
+                ORDER BY bm25_score DESC
+                LIMIT 50
+            ),
+            candidate_ids AS (
+                SELECT episode_id FROM semantic_candidates
+                UNION
+                SELECT episode_id FROM keyword_candidates
             )
             SELECT
-                e.id,
-                e.org_id,
-                e.team_id,
-                e.user_id,
-                e.agent_id,
-                e.session_id,
-                e.role,
-                e.content,
-                e.tags,
-                e.metadata,
-                e.created_at,
-                sc.similarity_score
-            FROM semantic_candidates sc
-            JOIN episodes e ON e.id = sc.episode_id
-            WHERE e.org_id = :org_id
-              AND e.team_id IS NOT DISTINCT FROM :team_id
-              AND e.user_id IS NOT DISTINCT FROM :user_id
-              AND e.agent_id IS NOT DISTINCT FROM :agent_id
-              AND e.deleted_at IS NULL
-              AND (:tags IS NULL OR e.tags && :tags)
-              AND (:from_time IS NULL OR e.created_at >= :from_time)
-              AND (:to_time IS NULL OR e.created_at <= :to_time)
-              AND (:role IS NULL OR e.role = :role)
-              AND (:session_id IS NULL OR e.session_id = :session_id){tf_clause}
-            ORDER BY sc.similarity_score DESC
+                fe.id,
+                fe.org_id,
+                fe.team_id,
+                fe.user_id,
+                fe.agent_id,
+                fe.session_id,
+                fe.role,
+                fe.content,
+                fe.tags,
+                fe.metadata,
+                fe.created_at,
+                (
+                    COALESCE(sc.similarity_score, 0.0) * :semantic_weight
+                    + COALESCE(kc.bm25_score, 0.0) * :keyword_weight
+                    + LEAST(
+                        1.0,
+                        GREATEST(
+                            0.0,
+                            EXP(
+                                -(
+                                    EXTRACT(EPOCH FROM (NOW() - fe.created_at)) / 3600.0
+                                ) / 168.0
+                            )
+                        )
+                    ) * :recency_weight
+                ) AS similarity_score
+            FROM candidate_ids ci
+            JOIN filtered_episodes fe ON fe.id = ci.episode_id
+            LEFT JOIN semantic_candidates sc ON sc.episode_id = fe.id
+            LEFT JOIN keyword_candidates kc ON kc.episode_id = fe.id
+            ORDER BY similarity_score DESC, fe.created_at DESC
             LIMIT :limit
             """
+        ).bindparams(
+            bindparam("tags", type_=ARRAY(String())),
+            bindparam("from_time", type_=DateTime(timezone=True)),
+            bindparam("to_time", type_=DateTime(timezone=True)),
+            bindparam("role", type_=String()),
+            bindparam("session_id", type_=UUID(as_uuid=True)),
         )
         result = await self.db.execute(
             sql,
@@ -301,10 +378,109 @@ class EpisodicMemory:
                 "role": role,
                 "session_id": session_id,
                 "limit": limit,
+                "query": query,
+                "semantic_weight": resolved_weights.semantic,
+                "keyword_weight": resolved_weights.keyword,
+                "recency_weight": resolved_weights.recency,
                 **tf_params,
             },
         )
 
+        return [
+            EpisodeSearchResult(
+                episode=_row_to_episode(row),
+                similarity_score=float(row.similarity_score),
+            )
+            for row in result
+        ]
+
+    async def search_keyword(
+        self,
+        scope: MemoryScope,
+        query: str,
+        tags: list[str] | None = None,
+        tag_filters: list[TagFilter] | None = None,
+        from_time: datetime | None = None,
+        to_time: datetime | None = None,
+        role: str | None = None,
+        session_id: uuid.UUID | None = None,
+        limit: int = 10,
+    ) -> list[EpisodeSearchResult]:
+        """Run full-text keyword search against episode content within scope."""
+        tf_sql, tf_params = build_tag_filter_sql(tag_filters or [], alias="e")
+        tf_clause = f"\n              AND {tf_sql}" if tf_sql else ""
+
+        sql = text(
+            f"""
+            WITH keyword_query AS (
+                SELECT plainto_tsquery('english', :query) AS ts_query
+            )
+            SELECT
+                e.id,
+                e.org_id,
+                e.team_id,
+                e.user_id,
+                e.agent_id,
+                e.session_id,
+                e.role,
+                e.content,
+                e.tags,
+                e.metadata,
+                e.created_at,
+                ts_rank_cd(e.search_vector, kq.ts_query) AS similarity_score
+            FROM episodes e
+            CROSS JOIN keyword_query kq
+            WHERE e.org_id = :org_id
+              AND e.team_id IS NOT DISTINCT FROM :team_id
+              AND e.user_id IS NOT DISTINCT FROM :user_id
+              AND e.agent_id IS NOT DISTINCT FROM :agent_id
+              AND e.deleted_at IS NULL
+              AND (
+                  CAST(:tags AS VARCHAR[]) IS NULL
+                  OR e.tags && CAST(:tags AS VARCHAR[])
+              )
+              AND (
+                  CAST(:from_time AS TIMESTAMPTZ) IS NULL
+                  OR e.created_at >= CAST(:from_time AS TIMESTAMPTZ)
+              )
+              AND (
+                  CAST(:to_time AS TIMESTAMPTZ) IS NULL
+                  OR e.created_at <= CAST(:to_time AS TIMESTAMPTZ)
+              )
+              AND (CAST(:role AS VARCHAR) IS NULL OR e.role = CAST(:role AS VARCHAR))
+              AND (
+                  CAST(:session_id AS UUID) IS NULL
+                  OR e.session_id = CAST(:session_id AS UUID)
+              )
+              AND kq.ts_query <> ''::tsquery
+              AND e.search_vector @@ kq.ts_query{tf_clause}
+            ORDER BY similarity_score DESC, e.created_at DESC
+            LIMIT :limit
+            """
+        ).bindparams(
+            bindparam("tags", type_=ARRAY(String())),
+            bindparam("from_time", type_=DateTime(timezone=True)),
+            bindparam("to_time", type_=DateTime(timezone=True)),
+            bindparam("role", type_=String()),
+            bindparam("session_id", type_=UUID(as_uuid=True)),
+        )
+        result = await self.db.execute(
+            sql,
+            {
+                "org_id": _as_uuid(scope.org_id),
+                "team_id": _as_uuid(scope.team_id),
+                "user_id": _as_uuid(scope.user_id),
+                "agent_id": _as_uuid(scope.agent_id),
+                "query": query,
+                "tags": tags,
+                "from_time": from_time,
+                "to_time": to_time,
+                "role": role,
+                "session_id": session_id,
+                "limit": limit,
+                **tf_params,
+            },
+        )
         return [
             EpisodeSearchResult(
                 episode=_row_to_episode(row),

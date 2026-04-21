@@ -23,6 +23,7 @@ from app.exceptions import (
     ValidationError,
 )
 from app.middleware.rate_limit import setup_rate_limiting
+from app.services.search_config import WEIGHT_SUM_ERROR_MESSAGE
 
 
 def configure_logging() -> None:
@@ -188,11 +189,14 @@ def create_app() -> FastAPI:
             {k: v for k, v in e.items() if k not in ("ctx", "url")}
             for e in exc.errors()
         ]
+        status_code = status.HTTP_422_UNPROCESSABLE_ENTITY
+        if any(WEIGHT_SUM_ERROR_MESSAGE in str(item.get("msg", "")) for item in sanitized):
+            status_code = status.HTTP_400_BAD_REQUEST
         logger.warning("Validation error", request_id=request_id, errors=sanitized)
         return error(
             code=VALIDATION_ERROR,
             message="Request validation failed",
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status_code,
             request_id=request_id,
             details={"errors": sanitized},
         )

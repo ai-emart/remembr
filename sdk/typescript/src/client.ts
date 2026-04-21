@@ -15,7 +15,7 @@ import {
   TagFilter,
 } from './types';
 
-const VALID_SEARCH_MODES = new Set(['semantic', 'hybrid', 'filter_only']);
+const VALID_SEARCH_MODES = new Set(['semantic', 'keyword', 'hybrid']);
 
 interface RestoreResponse {
   restoredMessageCount: number;
@@ -164,9 +164,9 @@ export class RemembrClient {
   async search(params: SearchMemoryParams): Promise<MemoryQueryResult> {
     this.requireNonEmpty(params.query, 'query');
 
-    const mode = params.mode ?? 'hybrid';
-    if (!VALID_SEARCH_MODES.has(mode)) {
-      throw new Error('mode must be one of: semantic, hybrid, filter_only');
+    const searchMode = params.mode ?? params.searchMode ?? 'hybrid';
+    if (!VALID_SEARCH_MODES.has(searchMode)) {
+      throw new Error('searchMode must be one of: semantic, keyword, hybrid');
     }
 
     const limit = params.limit ?? 20;
@@ -197,7 +197,8 @@ export class RemembrClient {
         from_time: params.fromTime?.toISOString(),
         to_time: params.toTime?.toISOString(),
         limit,
-        mode,
+        search_mode: searchMode,
+        weights: params.weights,
       },
     });
 

@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import ARRAY, DateTime, ForeignKey, String, Text, func
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 EMBEDDING_STATUS_PENDING = "pending"
@@ -57,6 +57,11 @@ class Episode(Base, UUIDMixin, SoftDeleteMixin):
     )
     role: Mapped[str] = mapped_column(String(50), nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
+    search_vector: Mapped[str | None] = mapped_column(
+        TSVECTOR,
+        nullable=True,
+        server_default=None,
+    )
     tags: Mapped[list[str] | None] = mapped_column(
         ARRAY(String),
         nullable=True,

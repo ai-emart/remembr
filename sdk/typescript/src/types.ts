@@ -32,6 +32,12 @@ export interface MemoryQueryResult {
   query_time_ms: number;
 }
 
+export interface SearchWeights {
+  semantic?: number;
+  keyword?: number;
+  recency?: number;
+}
+
 export interface CheckpointInfo {
   checkpoint_id: string;
   created_at: string;
@@ -94,8 +100,12 @@ export interface SearchMemoryParams {
   toTime?: Date;
   /** Maximum number of results to return. Must be greater than 0. */
   limit?: number;
-  /** Search strategy. Must be one of: semantic, hybrid, filter_only. */
-  mode?: 'semantic' | 'hybrid' | 'filter_only';
+  /** Search strategy. Must be one of: semantic, keyword, hybrid. */
+  searchMode?: 'semantic' | 'keyword' | 'hybrid';
+  /** Optional hybrid ranking weights. Only used when searchMode is `hybrid`. */
+  weights?: SearchWeights;
+  /** Deprecated alias for `searchMode`. */
+  mode?: 'semantic' | 'keyword' | 'hybrid';
 }
 
 /** Parameters for loading session history. */

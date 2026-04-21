@@ -5,8 +5,8 @@ from time import perf_counter
 from typing import Annotated, Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, Request, Response, status
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 from redis.asyncio import Redis
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -29,8 +29,9 @@ from app.services.cache import CacheService
 from app.services.episodic import EpisodicMemory
 from app.services.forgetting import ForgettingService
 from app.services.scoping import MemoryScope, ScopeResolver
+from app.services.search_config import DEFAULT_SEARCH_MODE, SearchMode, SearchWeights
 from app.services.short_term import SessionMessage, ShortTermMemory
-from app.services.tag_filter import TagFilter, build_tag_filter_sql
+from app.services.tag_filter import TagFilter
 
 router = APIRouter(tags=["memory"])
 
@@ -97,6 +98,8 @@ class RestoreSessionResponse(BaseModel):
 
 
 class MemoryQueryRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     query: str | None = None
     session_id: UUID | None = None
     role: str | None = None
@@ -106,6 +109,11 @@ class MemoryQueryRequest(BaseModel):
     to_time: datetime | None = None
     limit: int = Field(default=20, ge=1, le=100)
     offset: int = Field(default=0, ge=0)
+    search_mode: SearchMode = Field(
+        default=DEFAULT_SEARCH_MODE,
+        validation_alias=AliasChoices("search_mode", "mode"),
+    )
+    weights: SearchWeights | None = None
 
 
 class MemorySearchResult(BaseModel):
@@ -354,17 +362,38 @@ class MemoryQueryEngine:
             )
             if has_filters:
                 try:
-                    semantic = await self.episodic.search_hybrid(
-                        scope=scope,
-                        query=request.query,
-                        tags=request.tags,
-                        tag_filters=request.tag_filters,
-                        from_time=request.from_time,
-                        to_time=request.to_time,
-                        role=request.role,
-                        session_id=request.session_id,
-                        limit=request.limit,
-                    )
+                    if request.search_mode == "keyword":
+                        semantic = await self.episodic.search_keyword(
+                            scope=scope,
+                            query=request.query,
+                            tags=request.tags,
+                            tag_filters=request.tag_filters,
+                            from_time=request.from_time,
+                            to_time=request.to_time,
+                            role=request.role,
+                            session_id=request.session_id,
+                            limit=request.limit,
+                        )
+                    elif request.search_mode == "semantic":
+                        semantic = await self.episodic.search_semantic(
+                            scope=scope,
+                            query=request.query,
+                            tag_filters=request.tag_filters,
+                            limit=request.limit,
+                        )
+                    else:
+                        semantic = await self.episodic.search_hybrid(
+                            scope=scope,
+                            query=request.query,
+                            tags=request.tags,
+                            tag_filters=request.tag_filters,
+                            from_time=request.from_time,
+                            to_time=request.to_time,
+                            role=request.role,
+                            session_id=request.session_id,
+                            limit=request.limit,
+                            weights=request.weights,
+                        )
                 except Exception:
                     semantic = await self.episodic.search_semantic(
                         scope=scope,
@@ -390,11 +419,25 @@ class MemoryQueryEngine:
                         _filtered.append(item)
                     semantic = _filtered
             else:
-                semantic = await self.episodic.search_semantic(
-                    scope=scope,
-                    query=request.query,
-                    limit=request.limit,
-                )
+                if request.search_mode == "keyword":
+                    semantic = await self.episodic.search_keyword(
+                        scope=scope,
+                        query=request.query,
+                        limit=request.limit,
+                    )
+                elif request.search_mode == "semantic":
+                    semantic = await self.episodic.search_semantic(
+                        scope=scope,
+                        query=request.query,
+                        limit=request.limit,
+                    )
+                else:
+                    semantic = await self.episodic.search_hybrid(
+                        scope=scope,
+                        query=request.query,
+                        limit=request.limit,
+                        weights=request.weights,
+                    )
 
             for item in semantic:
                 episode = item.episode
@@ -630,6 +673,12 @@ async def search_memory(
     ctx: Annotated[RequestContext, Depends(require_auth)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> StandardResponse[MemorySearchResponse]:
+    if payload.weights is not None and payload.search_mode != "hybrid":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="weights may only be provided when search_mode='hybrid'",
+        )
+
     scope = ScopeResolver.resolve_writable_scope(ScopeResolver.from_request_context(ctx))
     engine = MemoryQueryEngine(EpisodicMemory(db=db))
 
@@ -988,7 +1037,6 @@ async def restore_memory_episode(
     Returns 410 Gone if the episode exists but the 30-day window has expired
     (this state is transient — the purge job will hard-delete it shortly after).
     """
-    from fastapi import Response as FastAPIResponse
 
     scope = ScopeResolver.resolve_writable_scope(ScopeResolver.from_request_context(ctx))
     service = ForgettingService(db=db, redis=redis)
