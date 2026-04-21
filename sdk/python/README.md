@@ -155,6 +155,80 @@ main();
 
 ---
 
+## CLI
+
+The `remembr` CLI is bundled with the Python SDK (v0.2.0+). After installation you get a terminal interface for every API operation.
+
+### Installation
+
+```bash
+pip install remembr
+```
+
+### Configuration
+
+```bash
+# Save credentials to ~/.remembr/config.toml
+remembr config set api_key  sk-...
+remembr config set base_url http://localhost:8000/api/v1
+
+# View current config (API key is masked)
+remembr config show
+```
+
+### Commands
+
+| Command | Description |
+|---------|-------------|
+| `remembr health` | Check server health |
+| `remembr store <content>` | Store a memory episode |
+| `remembr search <query>` | Semantic search across memory |
+| `remembr sessions list` | List all sessions |
+| `remembr sessions get <id>` | Fetch a single session |
+| `remembr export` | Export memory to JSON or CSV |
+| `remembr config set/get/show` | Manage credentials |
+
+Global flags: `--api-key`, `--base-url`, `--verbose` (or env vars `REMEMBR_API_KEY` / `REMEMBR_BASE_URL`).
+
+### Example output
+
+**`remembr health`**
+
+```
+[OK] Status: ok | Version: 0.2.0 | Environment: production
+```
+
+**`remembr search "notification preferences"`**
+
+```
++------------+------+--------------------------------------------+-------+--------+----------------------+
+| Episode ID | Role | Content                                    | Score | Tags   | Created              |
++------------+------+--------------------------------------------+-------+--------+----------------------+
+| ep_a1b2c3  | user | User prefers email notifications on Fridays| 0.953 | pref   | 2026-01-15T09:00:00Z |
+| ep_d4e5f6  | user | Send summaries every Friday afternoon      | 0.871 | pref   | 2026-01-10T14:22:00Z |
++------------+------+--------------------------------------------+-------+--------+----------------------+
+```
+
+**`remembr sessions list`**
+
+```
++-------------+----------------------+----------+----------+
+| Session ID  | Created              | Messages | Metadata |
++-------------+----------------------+----------+----------+
+| sess_abc123 | 2026-01-15T09:00:00Z | 12       | {}       |
+| sess_def456 | 2026-01-10T14:00:00Z | 8        | {}       |
++-------------+----------------------+----------+----------+
+```
+
+**`remembr export --format csv --output memories.csv`**
+
+```
+Exporting... [################] 100% done
+Saved 42 episodes to memories.csv
+```
+
+---
+
 ## Framework Adapters
 
 Remembr provides native adapters for 8 major AI frameworks. All adapters are **production-ready** and **fully tested**.
