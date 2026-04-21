@@ -534,7 +534,7 @@ class TestMeEndpoint:
         """Test getting current user without token."""
         response = await client.get("/api/v1/auth/me")
 
-        assert response.status_code == status.HTTP_401_UNAUTHORIZED
+        assert response.status_code == status.HTTP_403_FORBIDDEN
 
     async def test_get_me_invalid_token(self, client: AsyncClient):
         """Test getting current user with invalid token."""

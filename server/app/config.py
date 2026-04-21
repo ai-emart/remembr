@@ -198,18 +198,16 @@ def get_test_settings() -> Settings:
     Get settings for testing with overridden database URL.
 
     Uses a separate test database to avoid polluting production data.
+    Points at the Docker pgvector container on port 5433.
     """
+    _DOCKER_TEST_DB = (
+        "postgresql+asyncpg://remembr:remembr@localhost:5433/remembr_test"
+    )
+
     settings = get_settings()
 
-    # Override database URL for testing - handle both /remembr and /remembr_test
-    db_url = settings.database_url.get_secret_value()
-    if "/remembr_test" not in db_url:
-        test_db_url = db_url.replace("/remembr", "/remembr_test")
-    else:
-        test_db_url = db_url
-
     return Settings(
-        database_url=SecretStr(test_db_url),
+        database_url=SecretStr(_DOCKER_TEST_DB),
         redis_url=settings.redis_url,
         secret_key=settings.secret_key,
         environment="local",

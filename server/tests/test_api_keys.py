@@ -147,7 +147,7 @@ class TestCreateAPIKeyEndpoint:
             json={"name": "Test Key"},
         )
 
-        assert response.status_code == status.HTTP_401_UNAUTHORIZED
+        assert response.status_code == status.HTTP_403_FORBIDDEN
 
     async def test_create_api_key_invalid_name(self, client: AsyncClient):
         """Test creating API key with invalid name."""
@@ -250,7 +250,7 @@ class TestListAPIKeysEndpoint:
         """Test listing API keys without authentication."""
         response = await client.get("/api/v1/api-keys")
 
-        assert response.status_code == status.HTTP_401_UNAUTHORIZED
+        assert response.status_code == status.HTTP_403_FORBIDDEN
 
     async def test_list_api_keys_org_isolation(self, client: AsyncClient):
         """Test that users only see keys from their organization."""
@@ -416,7 +416,7 @@ class TestRevokeAPIKeyEndpoint:
         fake_id = str(uuid.uuid4())
         response = await client.delete(f"/api/v1/api-keys/{fake_id}")
 
-        assert response.status_code == status.HTTP_401_UNAUTHORIZED
+        assert response.status_code == status.HTTP_403_FORBIDDEN
 
 
 @pytest.mark.asyncio
