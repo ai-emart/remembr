@@ -6,6 +6,6 @@
 sentence-transformers>=2.7.0
 
 # OpenAI (EMBEDDING_PROVIDER=openai)
-openai>=1.30.0
+openai>=2.32.0
 
 # Jina AI and Ollama use httpx, which is already in requirements.txt
