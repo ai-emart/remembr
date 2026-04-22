@@ -1,65 +1,61 @@
-# Releasing
+# Releasing Remembr
 
-Releases are automated from Git tags.
+This document describes how to release a new version of Remembr, including publishing to PyPI and npm.
 
-## Normal Release Flow
+## GitHub Secrets Setup
 
-1. Make sure `main` is green.
-2. Update package versions and changelog entries as needed.
-3. Create and push the tag:
+Before releasing, you must add the following secrets to the GitHub repository:
 
-```bash
-git tag v0.2.0
-git push origin v0.2.0
-```
+### PyPI API Token
 
-Pushing a tag that matches `v*.*.*` triggers `.github/workflows/release.yml`, which:
+1. Go to [PyPI Account Settings](https://pypi.org/manage/account/)
+2. Navigate to API tokens section
+3. Create a new API token with scope "Project: remembr"
+4. Copy the token
+5. Go to your GitHub repository Settings → Secrets and variables → Actions
+6. Add a new secret named `PYPI_API_TOKEN` with the token value
 
-- runs the server, SDK, adapter, lint, and docs checks
-- publishes `sdk/python` to PyPI
-- publishes `sdk/typescript` to npm
-- creates a GitHub Release with generated release notes
+### NPM Token
 
-## Required GitHub Secrets
+1. Go to [npmjs.com](https://www.npmjs.com/) and log in
+2. Navigate to your account settings → Access Tokens
+3. Create a new Automation token (or use an existing one)
+4. Copy the token
+5. Go to your GitHub repository Settings → Secrets and variables → Actions
+6. Add a new secret named `NPM_TOKEN` with the token value
 
-Add these secrets in the GitHub repository before the first release:
+## Release Process
 
-### `PYPI_API_TOKEN`
+To release a new version:
 
-1. Open the repository on GitHub.
-2. Go to `Settings`.
-3. In the left sidebar, open `Secrets and variables` -> `Actions`.
-4. Click `New repository secret`.
-5. Set `Name` to `PYPI_API_TOKEN`.
-6. Paste your PyPI API token as the value.
-7. Click `Add secret`.
+1. Update version numbers in:
+   - `server/pyproject.toml` (version field)
+   - `sdk/python/pyproject.toml` (version field)
+   - `sdk/typescript/package.json` (version field)
 
-To create the token in PyPI:
+2. Commit the version changes:
+   ```bash
+   git add server/pyproject.toml sdk/python/pyproject.toml sdk/typescript/package.json
+   git commit -m "Bump version to X.Y.Z"
+   ```
 
-1. Sign in to PyPI.
-2. Open `Account settings`.
-3. Open `API tokens`.
-4. Create a token with permission to publish the `remembr` project.
-5. Copy it immediately and store it as the GitHub secret above.
+3. Create and push a version tag:
+   ```bash
+   git tag v0.2.0
+   git push origin v0.2.0
+   ```
 
-### `NPM_TOKEN`
+This will automatically:
+- Run the full test suite on Ubuntu, macOS, and Windows
+- Publish Python SDK to PyPI (if tests pass)
+- Publish TypeScript SDK to npm (if tests pass)
+- Create a GitHub Release with auto-generated notes (if tests pass)
 
-1. Open the repository on GitHub.
-2. Go to `Settings`.
-3. In the left sidebar, open `Secrets and variables` -> `Actions`.
-4. Click `New repository secret`.
-5. Set `Name` to `NPM_TOKEN`.
-6. Paste your npm access token as the value.
-7. Click `Add secret`.
+## Version Tag Format
 
-To create the token in npm:
+Tags must follow semantic versioning: `vX.Y.Z` where:
+- X is the major version
+- Y is the minor version
+- Z is the patch version
 
-1. Sign in to npm.
-2. Open `Access Tokens`.
-3. Create a publish-capable token for the `@remembr/sdk` package.
-4. Copy it immediately and store it as the GitHub secret above.
-
-## Optional Repo Settings
-
-To enforce "PR cannot be merged if any job fails", enable branch protection for `main`
-and require the CI status checks from `.github/workflows/ci.yml`.
+Example: `v0.2.0`, `v1.0.0`, `v0.2.1`

@@ -2,6 +2,8 @@ name: CI
 
 on:
   push:
+    branches:
+      - main
   pull_request:
     branches:
       - main
@@ -47,7 +49,7 @@ jobs:
 
       - name: Start PostgreSQL, Redis, and PgBouncer
         if: runner.os == 'Linux'
-        run: docker compose up -d postgres redis pgbouncer
+        run: docker compose -f docker-compose.test.yml up -d postgres redis pgbouncer
 
       - name: Run full server test suite
         if: runner.os == 'Linux'
@@ -68,7 +70,7 @@ jobs:
 
       - name: Tear down services
         if: runner.os == 'Linux' && always()
-        run: docker compose down -v --remove-orphans
+        run: docker compose -f docker-compose.test.yml down -v --remove-orphans
 
   test-sdk-python:
     name: test-sdk-python (${{ matrix.os }})
@@ -138,6 +140,7 @@ jobs:
       matrix:
         adapter:
           - autogen
+          - base
           - crewai
           - haystack
           - langchain

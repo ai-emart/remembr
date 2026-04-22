@@ -4,16 +4,43 @@ services:
     container_name: remembr-test-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: remembr_test
+      POSTGRES_USER: remembr
+      POSTGRES_PASSWORD: remembr
+      POSTGRES_DB: remembr
     ports:
-      - "5433:5432"
+      - "5432:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d remembr_test"]
+      test: ["CMD-SHELL", "pg_isready -U remembr -d remembr"]
       interval: 10s
       timeout: 5s
       retries: 10
+      start_period: 10s
+
+  pgbouncer:
+    image: edoburu/pgbouncer:latest
+    container_name: remembr-test-pgbouncer
+    restart: unless-stopped
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: remembr
+      DB_PASSWORD: remembr
+      DB_NAME: remembr
+      POOL_MODE: transaction
+      DEFAULT_POOL_SIZE: 20
+      MAX_CLIENT_CONN: 200
+      AUTH_TYPE: md5
+      SERVER_TLS_SSLMODE: disable
+    ports:
+      - "6432:6432"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h localhost -p 6432 -U remembr -d pgbouncer"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
       start_period: 10s
 
   redis:
