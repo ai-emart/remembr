@@ -17,7 +17,16 @@
       "Bash(python -c \"import inspect, slowapi.middleware; print\\(inspect.getsource\\(slowapi.middleware._check_limits\\)\\)\")",
       "Bash(python -c \"import redis.exceptions; t = redis.exceptions.TimeoutError\\(\\); print\\(type\\(t\\).__mro__\\)\")",
       "Bash(python -c \"import inspect, slowapi.middleware; print\\(inspect.getsource\\(slowapi.middleware.SlowAPIMiddleware.dispatch\\)\\)\")",
-      "Bash(python -c \"import inspect, slowapi.extension; print\\(inspect.getsource\\(slowapi.extension._rate_limit_exceeded_handler\\)\\)\")"
+      "Bash(python -c \"import inspect, slowapi.extension; print\\(inspect.getsource\\(slowapi.extension._rate_limit_exceeded_handler\\)\\)\")",
+      "Bash(git push *)",
+      "Bash(python -m ruff check app/services/embeddings/ app/services/embedding.py app/services/episodic.py app/config.py tests/test_episodic.py tests/services/)",
+      "Bash(python -m pytest tests/test_episodic.py tests/services/ -v --timeout=60)",
+      "Bash(python -m pytest --timeout=120 -q)",
+      "Bash(docker --version)",
+      "Bash(docker compose *)",
+      "Bash(export PATH=\"$PATH:/c/Program Files/Docker/Docker/resources/bin\")",
+      "Bash(docker run *)",
+      "Bash(python -m pytest --tb=no -q --timeout=60 -v)"
     ]
   }
 }

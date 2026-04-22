@@ -70,6 +70,12 @@ jobs:
         run: |
           ruff format server/app --check
 
+      - name: Check example imports
+        run: |
+          pip install -e sdk/python
+          pip install langgraph python-dotenv
+          PYTHONPATH=examples/langgraph-multi-agent python -c "import src.graph; print('ok')"
+
       - name: Run tests with coverage
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/remembr_test

@@ -7,7 +7,7 @@ import threading
 from typing import Any, TYPE_CHECKING
 
 from adapters.base.error_handling import with_remembr_fallback
-from adapters.base.utils import format_messages_for_llm, parse_role
+from adapters.base.utils import format_messages_for_llm
 
 if TYPE_CHECKING:
     from remembr import RemembrClient
@@ -71,13 +71,16 @@ class RemembrMemoryTools:
     @function_tool
     @with_remembr_fallback(default_value="")
     def search_memory(query: str, session_id: str) -> str:
+        """Return a plain-text summary of matching memories for a session."""
         client = RemembrMemoryTools.client
         if client is None:
             return "Remembr client is not configured."
         if not query.strip() or not session_id.strip():
             return "query and session_id are required."
 
-        result = _run_async(client.search(query=query, session_id=session_id, limit=8, mode="hybrid"))
+        result = _run_async(
+            client.search(query=query, session_id=session_id, limit=8, search_mode="hybrid")
+        )
         if not result.results:
             return "No relevant memories found."
         lines = ["Relevant memories:"]
@@ -89,6 +92,7 @@ class RemembrMemoryTools:
     @function_tool
     @with_remembr_fallback(default_value="")
     def store_memory(content: str, session_id: str, tags: str = "") -> str:
+        """Store a memory and return the episode ID plus embedding_status from the SDK response."""
         client = RemembrMemoryTools.client
         if client is None:
             return "Remembr client is not configured."
@@ -105,7 +109,8 @@ class RemembrMemoryTools:
                 metadata={"source": "openai_agents_tool"},
             )
         )
-        return f"Stored memory {episode.episode_id}."
+        status = getattr(episode, "embedding_status", None) or "unknown"
+        return f"Stored memory {episode.episode_id} (embedding_status={status})."
 
     @staticmethod
     @function_tool
@@ -179,7 +184,7 @@ class RemembrHandoffMemory:
             query=f"handoff context for {receiver_agent}",
             session_id=self.session_id,
             limit=5,
-            mode="hybrid",
+            search_mode="hybrid",
         )
         return "\n".join([f"- {x.content}" for x in result.results])
 

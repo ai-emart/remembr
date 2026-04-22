@@ -7,6 +7,8 @@ from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeou
 from dataclasses import dataclass
 from typing import Any, TYPE_CHECKING
 
+from remembr import SearchWeights
+
 from adapters.base.error_handling import with_remembr_fallback
 from adapters.base.utils import format_messages_for_llm, parse_role
 
@@ -39,6 +41,8 @@ class RemembrMemoryDep:
     session_id: str
     auto_store: bool = True
     max_context_results: int = 5
+    search_mode: str = "hybrid"
+    weights: SearchWeights | dict[str, float] | None = None
 
 
 class RemembrMemoryTools:
@@ -56,7 +60,8 @@ class RemembrMemoryTools:
                 query=query,
                 session_id=ctx.deps.session_id,
                 limit=ctx.deps.max_context_results,
-                mode="hybrid",
+                search_mode=ctx.deps.search_mode,
+                weights=ctx.deps.weights,
             )
         )
         if not result.results:
@@ -70,7 +75,7 @@ class RemembrMemoryTools:
     @staticmethod
     @tool
     @with_remembr_fallback(default_value="")
-    def store_memory(ctx: RunContext[RemembrMemoryDep], content: str, tags: list[str] = []) -> str:
+    def store_memory(ctx: RunContext[RemembrMemoryDep], content: str, tags: list[str] | None = None) -> str:
         if not content.strip():
             return "Cannot store empty memory."
 
@@ -79,11 +84,13 @@ class RemembrMemoryTools:
                 content=content,
                 role="user",
                 session_id=ctx.deps.session_id,
-                tags=tags,
+                tags=tags or [],
                 metadata={"source": "pydantic_ai_tool"},
+                idempotency_key=_run_idempotency_key(ctx),
             )
         )
-        return f"Stored memory {episode.episode_id}."
+        status = getattr(episode, "embedding_status", None) or "unknown"
+        return f"Stored memory {episode.episode_id} (embedding_status={status})."
 
     @staticmethod
     @tool
@@ -106,7 +113,8 @@ def remembr_system_prompt(ctx: RunContext[RemembrMemoryDep]) -> str:
                 query="recent user preferences and durable facts",
                 session_id=ctx.deps.session_id,
                 limit=ctx.deps.max_context_results,
-                mode="hybrid",
+                search_mode=ctx.deps.search_mode,
+                weights=ctx.deps.weights,
             )
         )
         if not result.results:
@@ -172,3 +180,14 @@ def _run_async(coro: Any) -> Any:
         return loop.run_until_complete(coro)
     finally:
         loop.close()
+
+
+def _run_idempotency_key(ctx: RunContext[RemembrMemoryDep]) -> str | None:
+    for source in (ctx, getattr(ctx, "deps", None)):
+        if source is None:
+            continue
+        for attr in ("run_id", "request_id", "conversation_id"):
+            value = getattr(source, attr, None)
+            if isinstance(value, str) and value.strip():
+                return value
+    return None

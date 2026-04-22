@@ -1,68 +1,64 @@
-# Security Hardening Checklist
+# Security
 
-This checklist captures the MVP pre-launch hardening steps and links to automated validations where possible.
+Remembr V1 is designed around scoped access, soft deletion, and operator visibility rather than a flat memory bucket.
 
-## 1) Secrets hygiene
+## Auth model
 
-- [x] No secrets committed in source.
-- [x] Enforced via pre-commit scanning and CI checks.
+- Human users authenticate through `/auth/*` and receive JWTs.
+- SDKs and adapters should use API keys from `/api-keys`.
+- Every request carries an effective org scope. Optional team, user, and agent scope narrow it further.
 
-Recommended local run:
+## Scoping
 
-```bash
-pre-commit run --all-files
-```
+- Organization isolation is the baseline control.
+- Sessions are created inside the caller's writable scope.
+- Search and history queries inherit that scope automatically.
+- Structured tags help organization but do not replace security boundaries.
 
-## 2) Protected endpoint auth verification
+## Row-level isolation
 
-- [x] Automated test ensures protected `/api/v1` routes reject unauthenticated calls.
-- [x] Public exceptions are explicitly documented (`/health`, `/auth/register`, `/auth/login`, `/auth/refresh`, `/auth/logout`).
+Remembr uses database-level scoping to prevent cross-tenant reads. Application code resolves the request scope, and the database session enforces the final isolation boundary.
 
-Run:
+## PII
 
-```bash
-cd server
-pytest tests/test_security_authz.py -v
-```
+V1 does not promise automatic PII detection or redaction. Teams should:
 
-## 3) RLS verification
+- Avoid storing secrets in memory content
+- Keep sensitive IDs in metadata only when necessary
+- Prefer scoped API keys over shared org-wide keys
+- Use deletion workflows for data subject requests
 
-- [x] RLS behavior is covered by existing tests (org-scope isolation and context propagation).
+PII automation and policy tooling are forward-looking concerns, not solved by V1 alone.
 
-Run:
+## Encryption
 
-```bash
-cd server
-pytest tests/test_rls.py -v
-pytest tests/test_context_integration.py -v
-```
+- TLS should terminate at your ingress or platform edge
+- Managed Postgres and Redis should use encrypted transport where available
+- At-rest encryption depends on your database and volume provider
 
-## 4) PII logging audit
+## Soft deletes and purge
 
-- [x] Log statements avoid plaintext secrets (API keys, passwords, tokens).
-- [x] Structured logging via Loguru enabled; avoid logging user payload bodies directly.
+- Deletes are soft by default
+- Soft-deleted memories disappear from normal reads immediately
+- Hard delete permanently removes a specific episode
+- Scheduled purge jobs clear expired soft-deleted data
 
-Recommended periodic audit:
+## Auditability
 
-```bash
-rg "logger\.(debug|info|warning|error|exception)" server/app -n
-```
+- `request_id` is returned on API responses
+- Admin UI surfaces memory and session inspection for local operations
+- Webhook deliveries expose event-level outcomes
+- Export and diff endpoints support operator review workflows
 
-## 5) CORS hardening
+## Audit logs
 
-- [x] CORS origins are configurable from environment (`cors_origins`) instead of fixed code constants.
-- [x] Local default remains permissive only when explicit origins are not set.
+Remembr V1 has partial auditability through structured logs, webhook delivery records, request IDs, and deletion state. It is not yet a full compliance audit trail product.
 
-## 6) Rate limiting
+## Operational checklist
 
-- [x] Redis-backed rate limiting is enabled via SlowAPI.
-- [x] Default global limit per API key/token is configurable.
-- [x] Memory search has a stricter dedicated limit.
-- [x] `429` responses include rate-limit headers and retry guidance.
-- [x] Health endpoint is exempt.
+- Rotate API keys on ownership changes
+- Keep `SECRET_KEY` out of source control
+- Restrict `/admin` to trusted environments
+- Run Postgres with `pgvector`
+- Back up the database before large-scale deletes
 
-## 7) Connection pool controls
-
-- [x] Postgres async pool tuned for production defaults.
-- [x] Redis pool `max_connections=20` is configured.
-- [x] Pool exhaustion timeout warnings are logged.

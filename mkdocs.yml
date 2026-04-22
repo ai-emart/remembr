@@ -1,0 +1,73 @@
+site_name: Remembr
+site_description: Persistent memory for AI agents
+site_url: https://docs.remembr.dev
+repo_url: https://github.com/ai-emart/remembr
+theme:
+  name: material
+  language: en
+  features:
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - content.code.copy
+    - content.action.edit
+  icon:
+    repo: fontawesome/brands/github
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - def_list
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.superfences
+  - pymdownx.snippets:
+      base_path:
+        - docs
+  - pymdownx.highlight
+  - pymdownx.inlinehilite
+  - pymdownx.tabbed:
+      alternate_style: true
+
+nav:
+  - Home: index.md
+  - Quickstart:
+      - LangChain: quickstart/langchain.md
+      - LangGraph: quickstart/langgraph.md
+      - CrewAI: quickstart/crewai.md
+      - AutoGen: quickstart/autogen.md
+      - LlamaIndex: quickstart/llamaindex.md
+      - Pydantic AI: quickstart/pydantic-ai.md
+      - OpenAI Agents: quickstart/openai-agents.md
+      - Haystack: quickstart/haystack.md
+  - Concepts:
+      - Sessions: concepts/sessions.md
+      - Episodes: concepts/episodes.md
+      - Scoping: concepts/scoping.md
+      - Short-Term Memory: concepts/short-term-memory.md
+      - Search Modes: concepts/search-modes.md
+      - Embeddings: concepts/embeddings.md
+      - Soft Deletes: concepts/soft-deletes.md
+  - API Reference: api-reference.md
+  - Deployment:
+      - Docker: deployment/docker.md
+      - Railway: deployment/railway.md
+      - Render: deployment/render.md
+      - Fly.io: deployment/fly.md
+      - Kubernetes: deployment/kubernetes.md
+  - Operations:
+      - Security: security.md
+      - Observability: observability.md
+      - Admin UI: admin-ui.md
+      - CLI: cli.md
+      - Self-Hosted: self-hosted.md
+  - Cookbook:
+      - Customer Support Agent: cookbook/customer-support-agent.md
+      - Coding Assistant: cookbook/coding-assistant.md
+      - GDPR Deletion: cookbook/gdpr-deletion.md
+      - Multi-Agent Shared Memory: cookbook/multi-agent-shared-memory.md
+      - Debugging With Memory Diff: cookbook/debugging-with-memory-diff.md
+  - Roadmap: roadmap.md
+  - Contributing: contributing.md
+

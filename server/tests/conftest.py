@@ -9,6 +9,7 @@ import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from redis.asyncio import Redis
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 pytest_plugins = ("pytest_asyncio",)
@@ -181,8 +182,15 @@ async def db() -> AsyncGenerator[AsyncSession, None]:
     )
 
     async with test_engine.begin() as conn:
-        await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
-        await conn.run_sync(Base.metadata.create_all)
+        try:
+            await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+            await conn.run_sync(Base.metadata.create_all)
+        except DBAPIError as err:
+            message = str(err).lower()
+            await test_engine.dispose()
+            if 'extension "vector" is not available' in message:
+                pytest.skip("pgvector extension is not available in the configured test database")
+            raise
 
     async with test_session_local() as session:
         yield session

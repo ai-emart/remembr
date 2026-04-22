@@ -2,35 +2,46 @@
 
 ## Comparison
 
-| Framework | Pattern used | Best for | Install command |
-|---|---|---|---|
-| LangChain | `BaseChatMemory` drop-in | Existing LangChain chains/agents | `pip install remembr-langchain-adapter` |
-| LangGraph | Graph state nodes + checkpointer | Stateful graph workflows with thread checkpoints | `pip install remembr-langgraph-adapter` |
-| CrewAI | Shared + layered crew memory | Multi-agent crew collaboration | `pip install remembr-crewai-adapter` |
-| AutoGen | Agent hook injection | ConversableAgent/group chat memory context | `pip install remembr-autogen-adapter` |
-| LlamaIndex | Chat store + semantic memory buffer | Query/chat engines and RAG memory | `pip install remembr-llamaindex-adapter` |
-| Pydantic AI | Typed dependency injection + tools | Structured tool-first agents | `pip install remembr-pydantic-ai-adapter` |
-| OpenAI Agents SDK | `@function_tool` + lifecycle hooks | Swarm/handoff workflows | `pip install remembr-openai-agents-adapter` |
-| Haystack | `@component` pipeline blocks | Pipeline-based RAG and orchestration | `pip install remembr-haystack-adapter` |
+| Adapter | Framework | Idempotency | Tag Filters | Search Modes | Webhooks |
+|---|---|---|---|---|---|
+| `langchain` | LangChain | ✅ | ✅ | ✅ | ❌ |
+| `langgraph` | LangGraph | ✅ | ✅ | ✅ | ❌ |
+| `crewai` | CrewAI | ✅ | ✅ | ✅ | ❌ |
+| `autogen` | AutoGen | ✅ | ✅ | ✅ | ❌ |
+| `llamaindex` | LlamaIndex | ✅ | ✅ | ✅ | ❌ |
+| `pydantic_ai` | Pydantic AI | ✅ | ✅ | ✅ | ❌ |
+| `openai_agents` | OpenAI Agents SDK | ✅ | ✅ | ✅ | ❌ |
+| `haystack` | Haystack | ✅ | ✅ | ✅ | ❌ |
+
+## Install
+
+- `pip install remembr-langchain-adapter`
+- `pip install remembr-langgraph-adapter`
+- `pip install remembr-crewai-adapter`
+- `pip install remembr-autogen-adapter`
+- `pip install remembr-llamaindex-adapter`
+- `pip install remembr-pydantic-ai-adapter`
+- `pip install remembr-openai-agents-adapter`
+- `pip install remembr-haystack-adapter`
 
 ## When to use each
 
 - **LangChain**: You already use memory abstractions like `ConversationBufferMemory`.
-- **LangGraph**: You want durable graph-state and checkpoint replay.
-- **CrewAI**: You need short-term private + long-term shared team memory.
+- **LangGraph**: You want durable graph state and explicit checkpoint/restore integration.
+- **CrewAI**: You need short-term private plus long-term shared crew memory.
 - **AutoGen**: You want message-hook based contextual injection.
-- **LlamaIndex**: You need semantic memory retrieval inside query/chat engines.
-- **Pydantic AI**: You prefer typed deps + explicit tools and prompt composition.
-- **OpenAI Agents SDK**: You need tools/handoffs with non-blocking lifecycle logging.
-- **Haystack**: You build component pipelines and want memory as pipeline components.
+- **LlamaIndex**: You need retriever-aware memory inside chat/query engines.
+- **Pydantic AI**: You prefer typed deps, typed tools, and prompt composition.
+- **OpenAI Agents SDK**: You need tools, hooks, and handoff memory.
+- **Haystack**: You build component pipelines and want memory as reusable nodes.
 
 ## Common patterns and gotchas
 
-- All adapters rely on shared utilities in `adapters/base/utils.py`.
-- All Remembr calls should be protected via `with_remembr_fallback` to avoid crashing host frameworks.
-- Role normalization is done via `parse_role(...)` to avoid framework-specific role drift.
-- Prefer passing an explicit `session_id` for continuity across runs.
-- For multi-agent systems, include `agent_id`/`team_id` metadata for better scoping.
+- All adapters wrap the Python SDK in `sdk/python/remembr`; none call the REST API directly.
+- Store responses can return `embedding_status="pending"`. Immediate search after write may not include the new memory yet.
+- Role normalization is handled centrally via `parse_role(...)`.
+- Prefer explicit `session_id` values for continuity across runs and replay.
+- Structured tags like `topic:billing` or `agent:Researcher` work best with `TagFilter`.
 
 ## Migration guide
 

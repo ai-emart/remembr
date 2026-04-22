@@ -1,10 +1,10 @@
 [project]
 name = "remembr-pydantic-ai-adapter"
-version = "0.1.0"
+version = "0.2.0"
 description = "Pydantic AI adapter for Remembr dependency-injected memory"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 dependencies = [
-  "remembr>=0.1.0",
+  "remembr>=0.2.0",
   "pydantic-ai>=0.1.0",
 ]
 

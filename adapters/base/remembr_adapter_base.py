@@ -18,7 +18,7 @@ class BaseRemembrAdapter(abc.ABC):
         self,
         client: "RemembrClient",
         session_id: str | None = None,
-        scope_metadata: dict[str, Any] = {},
+        scope_metadata: dict[str, Any] | None = None,
     ) -> None:
         self.client = client
         self.scope_metadata = dict(scope_metadata or {})
@@ -49,14 +49,17 @@ class BaseRemembrAdapter(abc.ABC):
         role: str,
         tags: list[str] | None = None,
         metadata: dict[str, Any] | None = None,
+        session_id: str | None = None,
+        idempotency_key: str | None = None,
     ) -> Any:
         return self._run(
             self.client.store(
                 content=content,
                 role=role,
-                session_id=self.session_id,
+                session_id=session_id or self.session_id,
                 tags=tags or [],
                 metadata=metadata or {},
+                idempotency_key=idempotency_key,
             )
         )
 

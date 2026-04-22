@@ -5,6 +5,8 @@ from __future__ import annotations
 import asyncio
 from typing import Any, TYPE_CHECKING
 
+from remembr import TagFilter
+
 if TYPE_CHECKING:
     from remembr import RemembrClient
 
@@ -60,19 +62,39 @@ def _run_async(coro: Any) -> Any:
 
 @component
 class RemembrMemoryRetriever:
-    """Haystack component for semantic memory retrieval from Remembr."""
+    """Haystack component for Remembr retrieval.
+
+    Notes:
+        If this retriever runs in the same pipeline invocation as a store step, newly written
+        memories may still be pending embedding and may not be returned immediately.
+    """
 
     def __init__(self, client: "RemembrClient", default_session_id: str | None = None):
         self.client = client
         self.default_session_id = default_session_id
 
     @component.output_types(memories=list[str], episode_ids=list[str])
-    def run(self, query: str, session_id: str | None = None, limit: int = 5) -> dict[str, Any]:
+    def run(
+        self,
+        query: str,
+        session_id: str | None = None,
+        limit: int = 5,
+        search_mode: str = "hybrid",
+        tag_filters: list[TagFilter] | None = None,
+    ) -> dict[str, Any]:
         sid = session_id or self.default_session_id
         if not query.strip() or not sid:
             return {"memories": [], "episode_ids": []}
 
-        result = _run_async(self.client.search(query=query, session_id=sid, limit=limit, mode="hybrid"))
+        result = _run_async(
+            self.client.search(
+                query=query,
+                session_id=sid,
+                limit=limit,
+                search_mode=search_mode,
+                tag_filters=tag_filters,
+            )
+        )
         memories = [f"({item.role}) {item.content}" for item in result.results]
         episode_ids = [item.episode_id for item in result.results]
         return {"memories": memories, "episode_ids": episode_ids}
@@ -92,7 +114,7 @@ class RemembrMemoryWriter:
         content: str,
         role: str = "user",
         session_id: str | None = None,
-        tags: list[str] = [],
+        tags: list[str] | None = None,
     ) -> dict[str, Any]:
         sid = session_id or self.default_session_id
         if not content.strip() or not sid:
@@ -103,7 +125,7 @@ class RemembrMemoryWriter:
                 content=content,
                 role=role,
                 session_id=sid,
-                tags=list(tags),
+                tags=list(tags or []),
                 metadata={"source": "haystack_memory_writer"},
             )
         )
@@ -113,10 +135,19 @@ class RemembrMemoryWriter:
 class RemembrConversationMemory:
     """ChatMessageStore-compatible memory layer backed by Remembr."""
 
-    def __init__(self, client: "RemembrClient", session_id: str, retrieval_query: str = "recent conversation context"):
+    def __init__(
+        self,
+        client: "RemembrClient",
+        session_id: str,
+        retrieval_query: str = "recent conversation context",
+        search_mode: str = "hybrid",
+        tag_filters: list[TagFilter] | None = None,
+    ):
         self.client = client
         self.session_id = session_id
         self.retrieval_query = retrieval_query
+        self.search_mode = search_mode
+        self.tag_filters = tag_filters
 
     @staticmethod
     def _msg_role(message: Any) -> str:
@@ -155,7 +186,8 @@ class RemembrConversationMemory:
                 query=self.retrieval_query,
                 session_id=self.session_id,
                 limit=limit,
-                mode="hybrid",
+                search_mode=self.search_mode,
+                tag_filters=self.tag_filters,
             )
         ).results
 

@@ -22,7 +22,7 @@ class RemembrAutoGenMemory(BaseRemembrAdapter):
         self,
         client: Any,
         session_id: str | None = None,
-        scope_metadata: dict[str, Any] = {},
+        scope_metadata: dict[str, Any] | None = None,
         max_context_tokens: int = 300,
     ) -> None:
         super().__init__(client=client, session_id=session_id, scope_metadata=scope_metadata)
@@ -31,10 +31,22 @@ class RemembrAutoGenMemory(BaseRemembrAdapter):
     def save_context(self, inputs: dict[str, Any], outputs: dict[str, Any]) -> None:
         incoming = self._coerce_message_text(inputs.get("message"))
         outgoing = self._coerce_message_text(outputs.get("message"))
+        conversation_id = self._conversation_id(inputs, outputs)
+        message_index = self._message_index(inputs, outputs)
         if incoming:
-            self._safe_store(content=incoming, role="user", metadata={"direction": "incoming"})
+            self._safe_store(
+                content=incoming,
+                role="user",
+                metadata={"direction": "incoming", "conversation_id": conversation_id},
+                idempotency_key=self._idempotency_key(conversation_id, message_index, incoming),
+            )
         if outgoing:
-            self._safe_store(content=outgoing, role="assistant", metadata={"direction": "outgoing"})
+            self._safe_store(
+                content=outgoing,
+                role="assistant",
+                metadata={"direction": "outgoing", "conversation_id": conversation_id},
+                idempotency_key=self._idempotency_key(conversation_id, message_index + 1, outgoing),
+            )
 
     def load_context(self, inputs: dict[str, Any]) -> dict[str, Any]:
         message = self._coerce_message_text(inputs.get("message"))
@@ -48,6 +60,8 @@ class RemembrAutoGenMemory(BaseRemembrAdapter):
 
         def before_send(message: Any, recipient: Any = None, sender: Any = None, **kwargs: Any) -> Any:
             text = self._coerce_message_text(message)
+            conversation_id = self._conversation_id(kwargs, message)
+            message_index = self._message_index(kwargs, message)
             if text:
                 self._safe_store(
                     content=text,
@@ -56,7 +70,9 @@ class RemembrAutoGenMemory(BaseRemembrAdapter):
                         "direction": "outgoing",
                         "sender": getattr(sender, "name", None),
                         "recipient": getattr(recipient, "name", None),
+                        "conversation_id": conversation_id,
                     },
+                    idempotency_key=self._idempotency_key(conversation_id, message_index, text),
                 )
                 if isinstance(message, str):
                     return self.inject_context_into_message(message)
@@ -72,6 +88,8 @@ class RemembrAutoGenMemory(BaseRemembrAdapter):
 
         def after_receive(message: Any, sender: Any = None, recipient: Any = None, **kwargs: Any) -> Any:
             text = self._coerce_message_text(message)
+            conversation_id = self._conversation_id(kwargs, message)
+            message_index = self._message_index(kwargs, message)
             if text:
                 self._safe_store(
                     content=text,
@@ -80,7 +98,9 @@ class RemembrAutoGenMemory(BaseRemembrAdapter):
                         "direction": "incoming",
                         "sender": getattr(sender, "name", None),
                         "recipient": getattr(recipient, "name", None),
+                        "conversation_id": conversation_id,
                     },
+                    idempotency_key=self._idempotency_key(conversation_id, message_index, text),
                 )
                 # Trigger retrieval to warm memory path (best-effort).
                 self._safe_get_relevant_context(text)
@@ -125,9 +145,15 @@ class RemembrAutoGenMemory(BaseRemembrAdapter):
         content: str,
         role: str,
         metadata: dict[str, Any] | None = None,
+        idempotency_key: str | None = None,
     ) -> None:
         try:
-            self._store(content=content, role=role, metadata=metadata or {})
+            self._store(
+                content=content,
+                role=role,
+                metadata=metadata or {},
+                idempotency_key=idempotency_key,
+            )
         except Exception as err:  # pragma: no cover - defensive behavior
             LOGGER.warning("Remembr store failed in AutoGen hook: %s", err)
 
@@ -161,6 +187,35 @@ class RemembrAutoGenMemory(BaseRemembrAdapter):
         if len(tokens) <= max_context_tokens:
             return text
         return " ".join(tokens[:max_context_tokens])
+
+    @staticmethod
+    def _conversation_id(*candidates: Any) -> str:
+        for candidate in candidates:
+            if isinstance(candidate, dict):
+                for key in ("conversation_id", "chat_id", "thread_id"):
+                    value = candidate.get(key)
+                    if value is not None:
+                        return str(value)
+            value = getattr(candidate, "conversation_id", None)
+            if value is not None:
+                return str(value)
+        return "default"
+
+    @staticmethod
+    def _message_index(*candidates: Any) -> int:
+        for candidate in candidates:
+            if isinstance(candidate, dict):
+                value = candidate.get("message_index")
+                if isinstance(value, int):
+                    return value
+            value = getattr(candidate, "message_index", None)
+            if isinstance(value, int):
+                return value
+        return 0
+
+    @staticmethod
+    def _idempotency_key(conversation_id: str, message_index: int, _content: str) -> str:
+        return f"autogen-{conversation_id}-{message_index}"
 
 
 class RemembrAutoGenGroupChatMemory(RemembrAutoGenMemory):

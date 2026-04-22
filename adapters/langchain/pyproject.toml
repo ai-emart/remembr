@@ -1,10 +1,10 @@
 [project]
 name = "remembr-langchain-adapter"
-version = "0.1.0"
+version = "0.2.0"
 description = "LangChain adapter for Remembr memory"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 dependencies = [
-  "remembr>=0.1.0",
+  "remembr>=0.2.0",
   "langchain>=0.1.0",
 ]
 

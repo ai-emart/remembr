@@ -75,6 +75,7 @@ class Episode(BaseModel):
     created_at: datetime
     tags: list[str] = Field(default_factory=list)
     metadata: dict[str, Any] | None = None
+    embedding_status: str | None = None
 
 
 class SearchResult(BaseModel):

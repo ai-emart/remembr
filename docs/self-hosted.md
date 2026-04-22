@@ -1,94 +1,40 @@
-# Self-Hosted Setup
+# Self-Hosted
 
-Run Remembr server locally while using hosted Supabase (Postgres + pgvector) and Upstash (Redis).
+Self-hosting Remembr V1 means running the server, workers, Postgres with `pgvector`, Redis, and an embedding backend. The reference path is Docker Compose.
 
-## 1) Prerequisites
+## Recommended path
 
-- Python 3.11+
-- Access to Supabase Postgres connection string (with `pgvector` enabled)
-- Access to Upstash Redis URL
-- Jina API key for embeddings
+1. Copy `.env.example` to `.env`
+2. Run `docker-compose up -d`
+3. Run `docker-compose exec server alembic upgrade head`
+4. Create a user and API key
+5. Point your SDK or adapter at `http://localhost:8000/api/v1`
 
-## 2) Install server
+## Default services
 
-```bash
-cd server
-pip install -r requirements.txt
+- `postgres`
+- `pgbouncer`
+- `redis`
+- `ollama`
+- `ollama-init`
+- `server`
+- `worker`
+- `worker-beat`
+
+## Environment highlights
+
+```env
+DATABASE_URL=postgresql+asyncpg://remembr:remembr@pgbouncer:6432/remembr
+REDIS_URL=redis://redis:6379
+EMBEDDING_PROVIDER=ollama
+OLLAMA_BASE_URL=http://ollama:11434
+OLLAMA_EMBEDDING_MODEL=nomic-embed-text
 ```
 
-## 3) Environment variables
+## Production notes
 
-Create `.env` in `server/` (or export vars directly).
+- Put TLS and authz in front of the service
+- Keep `/admin` off the public internet
+- Back up Postgres regularly
+- Scale workers separately from the API
 
-| Variable | Required | Description | Example |
-|---|---:|---|---|
-| `DATABASE_URL` | ✅ | Async SQLAlchemy DB URL | `postgresql+asyncpg://user:pass@host:5432/db` |
-| `REDIS_URL` | ✅ | Redis URL (Upstash works) | `rediss://default:pass@...upstash.io:6379` |
-| `SECRET_KEY` | ✅ | JWT signing key | `openssl rand -hex 32` output |
-| `JINA_API_KEY` | ✅ | Embeddings provider key | `jina_xxx` |
-| `ENVIRONMENT` | ✅ | `local` / `staging` / `production` | `local` |
-| `LOG_LEVEL` | ✅ | `DEBUG`, `INFO`, etc. | `INFO` |
-| `API_V1_PREFIX` (`api_v1_prefix`) | optional | API prefix | `/api/v1` |
-| `HOST` | optional | Bind host | `0.0.0.0` |
-| `PORT` | optional | Bind port | `8000` |
-| `CORS_ORIGINS` / `cors_origins` | optional | Allowed origins (JSON list) | `["http://localhost:3000"]` |
-| `RATE_LIMIT_DEFAULT_PER_MINUTE` | optional | Default API limit per key/token | `100` |
-| `RATE_LIMIT_SEARCH_PER_MINUTE` | optional | Search endpoint limit per key/token | `30` |
-| `DB_POOL_SIZE` | optional | SQLAlchemy async pool size | `10` |
-| `DB_MAX_OVERFLOW` | optional | SQLAlchemy overflow connections | `20` |
-| `DB_POOL_TIMEOUT` | optional | Pool wait timeout seconds | `30` |
-| `DB_POOL_RECYCLE` | optional | Pool recycle seconds | `1800` |
-| `SENTRY_DSN` | optional | Error monitoring DSN | `https://...` |
-| `UPSTASH_REDIS_REST_URL` | optional | Alternate Upstash config | from Upstash console |
-| `UPSTASH_REDIS_REST_TOKEN` | optional | Alternate Upstash config | from Upstash console |
-
-## 4) Run migrations
-
-```bash
-cd server
-alembic upgrade head
-```
-
-Redis pool max connections is set to `20` in `server/app/db/redis.py` (verified production default).
-
-## 5) Start API
-
-```bash
-cd server
-uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
-```
-
-Health check:
-
-```bash
-curl http://localhost:8000/api/v1/health
-```
-
-## Common setup issues
-
-### 1) `pgvector` errors
-- Symptom: extension/operator errors in search queries.
-- Fix: ensure Supabase project has `vector` extension enabled and migration history is current.
-
-### 2) Redis TLS/connectivity failures
-- Symptom: cannot connect to Upstash.
-- Fix: use `rediss://` URL and verify firewall/network egress.
-
-### 3) Auth token failures (`401`)
-- Symptom: valid login but API returns unauthorized.
-- Fix: verify `SECRET_KEY` is stable across processes and tokens are sent as `Authorization: Bearer <token>`.
-
-### 4) Embeddings/search degradation
-- Symptom: poor semantic matches or embedding errors.
-- Fix: validate `JINA_API_KEY`, quotas, and outbound connectivity to Jina APIs.
-
-### 5) Migration drift
-- Symptom: runtime schema mismatch.
-- Fix:
-
-```bash
-cd server
-alembic current
-alembic history --verbose
-alembic upgrade head
-```

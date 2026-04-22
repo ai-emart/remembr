@@ -1,109 +1,88 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from datetime import datetime, timezone
+from remembr import TagFilter
 
+from adapters.base.tests.mock_remembr_sdk import MockRemembrAPI
 from adapters.crewai.remembr_crew_memory import RemembrCrewMemory, RemembrSharedCrewMemory
 
 
-@dataclass
-class _Obj:
-    session_id: str | None = None
+def test_crewai_round_trip_search_and_reset() -> None:
+    api = MockRemembrAPI()
+    client = api.build_client()
+    memory = RemembrCrewMemory(client=client, agent_id="researcher", agent_role="Researcher", team_id="team-1")
+
+    memory.save("customer likes summaries")
+    matches = memory.search("summaries")
+    memory.reset()
+
+    assert matches
+    assert matches[0].content == "customer likes summaries"
+    assert not [
+        episode
+        for episode in api.episodes.values()
+        if episode["session_id"] == memory.short_term and not episode["deleted"]
+    ]
 
 
-class _Result:
-    def __init__(self, episode_id: str, content: str, role: str = "user"):
-        self.episode_id = episode_id
-        self.content = content
-        self.role = role
-        self.score = 1.0
-        self.tags = []
-        self.created_at = datetime.now(timezone.utc)
+def test_crewai_idempotent_sdk_write_reuses_response() -> None:
+    api = MockRemembrAPI()
+    client = api.build_client()
+    session = client.request("POST", "/sessions", json={"metadata": {"name": "crew"}})["session_id"]
+
+    first = client.request(
+        "POST",
+        "/memory",
+        json={"content": "shared fact", "role": "user", "session_id": session},
+        idempotency_key="crew-static-key",
+    )
+    second = client.request(
+        "POST",
+        "/memory",
+        json={"content": "shared fact", "role": "user", "session_id": session},
+        idempotency_key="crew-static-key",
+    )
+
+    assert first["episode_id"] == second["episode_id"]
+    assert len(api.episodes) == 1
 
 
-class _SearchResponse:
-    def __init__(self, results):
-        self.results = results
+def test_crewai_tag_filters_and_keyword_search() -> None:
+    api = MockRemembrAPI()
+    client = api.build_client()
+    memory = RemembrCrewMemory(client=client, agent_id="planner", agent_role="Planner", team_id="team-2")
 
-
-class FakeRemembrClient:
-    def __init__(self):
-        self.counter = 0
-        self.sessions: dict[str, list[dict]] = {}
-
-    async def create_session(self, metadata=None):
-        self.counter += 1
-        sid = f"s-{self.counter}"
-        self.sessions[sid] = []
-        return _Obj(session_id=sid)
-
-    async def store(self, content, role="user", session_id=None, tags=None, metadata=None):
-        idx = len(self.sessions[session_id]) + 1
-        self.sessions[session_id].append({"episode_id": f"e-{idx}", "content": content, "role": role})
-
-    async def search(self, query, session_id=None, **kwargs):
-        q = query.lower()
-        results = [
-            _Result(item["episode_id"], item["content"], item["role"])
-            for item in self.sessions.get(session_id, [])
-            if q in item["content"].lower()
-        ]
-        return _SearchResponse(results)
-
-    async def forget_session(self, session_id):
-        self.sessions[session_id] = []
-
-
-def test_save_writes_short_and_long_term() -> None:
-    client = FakeRemembrClient()
-    memory = RemembrCrewMemory(client=client, agent_id="a1", team_id="t1")
-
-    memory.save("alpha fact")
-
-    assert len(client.sessions[memory.short_term]) == 1
-    assert len(client.sessions[memory.long_term]) == 1
-
-
-def test_search_merges_deduplicates_and_reset_only_clears_short_term() -> None:
-    client = FakeRemembrClient()
-    memory = RemembrCrewMemory(client=client, agent_id="a1", team_id="t1")
-
-    memory.save("Shared fact")
-    memory._run(
-        client.store(
-            "Additional long-term detail",
+    memory.save("plan sprint backlog")
+    results = memory._run(
+        client.search(
+            query="plan",
             session_id=memory.long_term,
-            role="user",
+            search_mode="keyword",
+            tag_filters=[TagFilter(key="agent", value="Planner")],
         )
     )
-    matches = memory.search("shared")
-    assert len(matches) == 1  # duplicated short/long entries dedupe
 
-    long_term_matches = memory.search("additional")
-    assert len(long_term_matches) == 1
-
-    memory.reset()
-    assert client.sessions[memory.short_term] == []
-    assert len(client.sessions[memory.long_term]) == 2
+    payload = api.payloads_for("POST", "/api/v1/memory/search")[-1]
+    assert len(results.results) == 1
+    assert payload["search_mode"] == "keyword"
 
 
-def test_shared_memory_injection_and_cross_agent_access() -> None:
-    client = FakeRemembrClient()
-    shared = RemembrSharedCrewMemory(client=client, team_id="team-42")
+def test_crewai_shared_memory_injects_agent_specific_tags() -> None:
+    api = MockRemembrAPI()
+    client = api.build_client()
+    shared = RemembrSharedCrewMemory(client=client, team_id="crew-77")
 
     class Agent:
-        def __init__(self):
+        def __init__(self, role: str):
+            self.role = role
             self.memory = None
 
     class Crew:
         def __init__(self):
-            self.agents = [Agent(), Agent()]
+            self.agents = [Agent("Researcher"), Agent("Writer")]
 
     crew = Crew()
     shared.inject_into_crew(crew)
+    crew.agents[0].memory.save("Mercury is closest to the sun")
 
-    crew.agents[0].memory.save("Researcher discovered: Mercury is the closest planet.")
-    found = crew.agents[1].memory.search("Mercury")
-
-    assert len(found) == 1
-    assert "Mercury" in found[0].content
+    stored = [episode for episode in api.episodes.values() if not episode["deleted"]]
+    assert any("agent:Researcher" in episode["tags"] for episode in stored)

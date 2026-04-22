@@ -33,12 +33,14 @@ class RemembrCrewMemory(BaseRemembrAdapter, BaseMemory):
         client: Any,
         *,
         agent_id: str,
+        agent_role: str | None = None,
         team_id: str,
         short_term_session_id: str | None = None,
         long_term_session_id: str | None = None,
-        scope_metadata: dict[str, Any] = {},
+        scope_metadata: dict[str, Any] | None = None,
     ) -> None:
         self.agent_id = agent_id
+        self.agent_role = agent_role or agent_id
         self.team_id = team_id
 
         short_scope_metadata = {
@@ -64,6 +66,7 @@ class RemembrCrewMemory(BaseRemembrAdapter, BaseMemory):
                         **(scope_metadata or {}),
                         "memory_layer": "long_term",
                         "team_id": team_id,
+                        "agent_id": agent_id,
                     }
                 )
             )
@@ -89,11 +92,13 @@ class RemembrCrewMemory(BaseRemembrAdapter, BaseMemory):
     @with_remembr_fallback()
     def save(self, value: Any) -> None:
         content = self._stringify(value)
+        agent_tag = f"agent:{self.agent_role}"
         self._run(
             self.client.store(
                 content=content,
                 role="user",
                 session_id=self.short_term_session_id,
+                tags=[agent_tag],
                 metadata={"layer": "short_term", "agent_id": self.agent_id, "team_id": self.team_id},
             )
         )
@@ -102,7 +107,8 @@ class RemembrCrewMemory(BaseRemembrAdapter, BaseMemory):
                 content=content,
                 role="user",
                 session_id=self.long_term_session_id,
-                metadata={"layer": "long_term", "team_id": self.team_id},
+                tags=[agent_tag],
+                metadata={"layer": "long_term", "team_id": self.team_id, "agent_id": self.agent_id},
             )
         )
 
@@ -147,6 +153,7 @@ class RemembrSharedCrewMemory(RemembrCrewMemory):
         super().__init__(
             client,
             agent_id="shared",
+            agent_role="shared",
             team_id=team_id,
             short_term_session_id=team_session_id,
             long_term_session_id=team_session_id,
@@ -161,7 +168,8 @@ class RemembrSharedCrewMemory(RemembrCrewMemory):
                 content=content,
                 role="user",
                 session_id=self.long_term_session_id,
-                metadata={"layer": "shared", "team_id": self.team_id},
+                tags=[f"agent:{self.agent_role}"],
+                metadata={"layer": "shared", "team_id": self.team_id, "agent_id": self.agent_id},
             )
         )
 
@@ -176,4 +184,18 @@ class RemembrSharedCrewMemory(RemembrCrewMemory):
 
     def inject_into_crew(self, crew: Any) -> None:
         for agent in getattr(crew, "agents", []):
-            setattr(agent, "memory", self)
+            agent_id = str(getattr(agent, "id", None) or getattr(agent, "role", None) or "agent")
+            agent_role = str(getattr(agent, "role", None) or agent_id)
+            setattr(
+                agent,
+                "memory",
+                RemembrCrewMemory(
+                    self.client,
+                    agent_id=agent_id,
+                    agent_role=agent_role,
+                    team_id=self.team_id,
+                    short_term_session_id=self.long_term_session_id,
+                    long_term_session_id=self.long_term_session_id,
+                    scope_metadata={"shared": True, "agent_id": agent_id},
+                ),
+            )

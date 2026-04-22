@@ -1,10 +1,10 @@
 [project]
 name = "remembr-haystack-adapter"
-version = "0.1.0"
+version = "0.2.0"
 description = "Haystack adapter for Remembr memory components"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 dependencies = [
-  "remembr>=0.1.0",
+  "remembr>=0.2.0",
   "haystack-ai>=2.0.0",
 ]
 

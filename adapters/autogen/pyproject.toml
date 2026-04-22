@@ -1,10 +1,10 @@
 [project]
 name = "remembr-autogen-adapter"
-version = "0.1.0"
+version = "0.2.0"
 description = "AutoGen adapter for Remembr memory injection"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 dependencies = [
-  "remembr>=0.1.0",
+  "remembr>=0.2.0",
   "pyautogen>=0.2.0",
 ]
 

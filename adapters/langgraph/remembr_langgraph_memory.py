@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
 from typing import Any, Iterator, Optional, TYPE_CHECKING
+
+from remembr import SearchWeights
 
 from adapters.base.error_handling import with_remembr_fallback
 from adapters.base.remembr_adapter_base import BaseRemembrAdapter
@@ -57,12 +58,29 @@ class RemembrLangGraphMemory(BaseRemembrAdapter):
 
     as_state_key: str = "remembr_context"
 
+    def __init__(
+        self,
+        client: "RemembrClient",
+        session_id: str | None = None,
+        scope_metadata: dict[str, Any] | None = None,
+        search_mode: str = "hybrid",
+        weights: SearchWeights | dict[str, float] | None = None,
+    ) -> None:
+        super().__init__(client=client, session_id=session_id, scope_metadata=scope_metadata)
+        self.search_mode = search_mode
+        self.weights = weights
+
     @with_remembr_fallback(default_value={})
     def load_memories(self, state: dict[str, Any], config: RunnableConfig) -> dict[str, Any]:
         query = self._last_human_message(state)
         context = ""
         if query:
-            result = self._search(query=query, limit=10)
+            result = self._search(
+                query=query,
+                limit=10,
+                search_mode=self.search_mode,
+                weights=self.weights,
+            )
             context = format_messages_for_llm(result.results)
 
         updated = dict(state)
@@ -175,28 +193,38 @@ def add_remembr_to_graph(
 
 
 class RemembrLangGraphCheckpointer(BaseCheckpointSaver, BaseRemembrAdapter):
-    """LangGraph checkpoint saver backed by Remembr episodic memory."""
+    """LangGraph checkpoint saver backed by Remembr checkpoint APIs."""
 
     def __init__(
         self,
         client: "RemembrClient",
         session_id: str | None = None,
-        scope_metadata: dict[str, Any] = {},
+        scope_metadata: dict[str, Any] | None = None,
     ) -> None:
         BaseRemembrAdapter.__init__(self, client=client, session_id=session_id, scope_metadata=scope_metadata)
+        self._checkpoint_index: dict[str, list[dict[str, Any]]] = {}
 
     def put(self, config: dict[str, Any], checkpoint: Checkpoint, metadata: dict[str, Any]) -> dict[str, Any]:
         thread_id = RemembrLangGraphMemory._thread_id_from_config(config)
-        payload = {
-            "checkpoint": checkpoint,
-            "metadata": metadata,
+        logical_checkpoint_id = str(
+            checkpoint.get("id")
+            if isinstance(checkpoint, dict) and checkpoint.get("id") is not None
+            else metadata.get("checkpoint_id", "checkpoint")
+        )
+        checkpoint_info = self._run(
+            self.client.checkpoint(
+                self.session_id,
+                idempotency_key=f"lg-{thread_id}-{logical_checkpoint_id}",
+            )
+        )
+        entry = {
+            "config": config,
+            "checkpoint": dict(checkpoint) if isinstance(checkpoint, dict) else checkpoint,
+            "metadata": dict(metadata),
+            "remembr_checkpoint_id": checkpoint_info.checkpoint_id,
             "thread_id": thread_id,
         }
-        self._store(
-            content=json.dumps(payload, default=str),
-            role="checkpoint",
-            metadata={"type": "langgraph_checkpoint", "thread_id": thread_id},
-        )
+        self._checkpoint_index.setdefault(thread_id, []).append(entry)
         return config
 
     async def aput(self, config: dict[str, Any], checkpoint: Checkpoint, metadata: dict[str, Any]) -> dict[str, Any]:
@@ -204,23 +232,18 @@ class RemembrLangGraphCheckpointer(BaseCheckpointSaver, BaseRemembrAdapter):
 
     def _checkpoint_entries(self, config: dict[str, Any]) -> list[tuple[dict[str, Any], dict[str, Any]]]:
         thread_id = RemembrLangGraphMemory._thread_id_from_config(config)
-        episodes = self._run(self.client.get_session_history(self.session_id, limit=500))
-        out: list[tuple[dict[str, Any], dict[str, Any]]] = []
-        for ep in episodes:
-            if ep.role != "checkpoint":
-                continue
-            if thread_id and isinstance(ep.metadata, dict):
-                if str(ep.metadata.get("thread_id", "")) != thread_id:
-                    continue
-            try:
-                parsed = json.loads(ep.content)
-            except Exception:
-                continue
-            checkpoint_data = parsed.get("checkpoint") if isinstance(parsed, dict) else None
-            metadata_data = parsed.get("metadata") if isinstance(parsed, dict) else None
-            if isinstance(checkpoint_data, dict):
-                out.append((checkpoint_data, metadata_data if isinstance(metadata_data, dict) else {}))
-        return out
+        entries = self._checkpoint_index.get(thread_id, [])
+        return [
+            (
+                entry["checkpoint"],
+                {
+                    **entry["metadata"],
+                    "remembr_checkpoint_id": entry["remembr_checkpoint_id"],
+                },
+            )
+            for entry in entries
+            if isinstance(entry.get("checkpoint"), dict)
+        ]
 
     def get(self, config: dict[str, Any]) -> Optional[Checkpoint]:
         entries = self._checkpoint_entries(config)
@@ -249,7 +272,6 @@ class RemembrLangGraphCheckpointer(BaseCheckpointSaver, BaseRemembrAdapter):
     async def alist(self, config: dict[str, Any]) -> list[CheckpointTuple]:
         return list(self.list(config))
 
-
     def save_context(self, inputs: dict[str, Any], outputs: dict[str, Any]) -> None:
         return None
 
@@ -261,3 +283,18 @@ class RemembrLangGraphCheckpointer(BaseCheckpointSaver, BaseRemembrAdapter):
 
     async def aput_writes(self, config: dict[str, Any], writes: Any, task_id: str | None = None) -> None:
         return None
+
+    def restore_checkpoint(self, config: dict[str, Any], checkpoint_id: str | None = None) -> dict[str, Any]:
+        thread_id = RemembrLangGraphMemory._thread_id_from_config(config)
+        entries = self._checkpoint_index.get(thread_id, [])
+        if not entries:
+            raise ValueError("No checkpoints available for this thread")
+
+        target = entries[-1]
+        if checkpoint_id is not None:
+            for entry in entries:
+                if entry["remembr_checkpoint_id"] == checkpoint_id:
+                    target = entry
+                    break
+
+        return self._run(self.client.restore(self.session_id, target["remembr_checkpoint_id"]))

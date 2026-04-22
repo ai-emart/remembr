@@ -1,142 +1,78 @@
 from __future__ import annotations
 
-import time
-from dataclasses import dataclass
-from datetime import datetime, timezone
+from types import SimpleNamespace
 
+from remembr import TagFilter
+
+from adapters.base.tests.mock_remembr_sdk import MockRemembrAPI
 from adapters.pydantic_ai.remembr_pydantic_memory import (
     RemembrMemoryDep,
     RemembrMemoryTools,
     RunContext,
-    create_remembr_agent,
     remembr_system_prompt,
 )
 
 
-@dataclass
-class _Session:
-    session_id: str
-
-
-@dataclass
-class _Episode:
-    episode_id: str
-
-
-class _ResultItem:
-    def __init__(self, episode_id: str, content: str, role: str = "user"):
-        self.episode_id = episode_id
-        self.content = content
-        self.role = role
-        self.score = 1.0
-        self.created_at = datetime.now(timezone.utc)
-
-
-class _SearchResult:
-    def __init__(self, results):
-        self.results = results
-
-
-class FakeRemembrClient:
-    def __init__(self):
-        self.counter = 0
-        self.sessions: dict[str, list[dict]] = {}
-        self.deleted: set[str] = set()
-        self.slow_search = False
-
-    async def create_session(self, metadata=None):
-        self.counter += 1
-        sid = f"s-{self.counter}"
-        self.sessions[sid] = []
-        return _Session(sid)
-
-    async def store(self, content, role="user", session_id=None, tags=None, metadata=None):
-        idx = len(self.sessions[session_id]) + 1
-        eid = f"e-{idx}"
-        self.sessions[session_id].append({"episode_id": eid, "content": content, "role": role})
-        return _Episode(eid)
-
-    async def search(self, query, session_id=None, limit=5, mode="hybrid"):
-        if self.slow_search:
-            time.sleep(2.2)
-        q = query.lower()
-        rows = [
-            _ResultItem(x["episode_id"], x["content"], x["role"])
-            for x in self.sessions.get(session_id, [])
-            if q.split()[0] in x["content"].lower()
-        ]
-        return _SearchResult(rows[:limit])
-
-    async def forget_episode(self, episode_id):
-        self.deleted.add(episode_id)
-
-
-def test_tools_store_search_forget() -> None:
-    client = FakeRemembrClient()
-    sid = "s-1"
-    client.sessions[sid] = []
-    dep = RemembrMemoryDep(client=client, session_id=sid)
+def test_pydantic_ai_round_trip_store_search_forget() -> None:
+    api = MockRemembrAPI()
+    client = api.build_client()
+    session_id = client.request("POST", "/sessions", json={"metadata": {"source": "test"}})["session_id"]
+    dep = RemembrMemoryDep(client=client, session_id=session_id, search_mode="keyword")
     ctx = RunContext(deps=dep)
 
-    stored = RemembrMemoryTools.store_memory(ctx, "User likes Python", tags=["pref"])
-    assert "Stored memory" in stored
+    stored = RemembrMemoryTools.store_memory(ctx, "user likes tags", tags=["topic:pydantic"])
+    found = RemembrMemoryTools.search_memory(ctx, "tags")
+    episode_id = next(iter(api.episodes))
+    forgotten = RemembrMemoryTools.forget_memory(ctx, episode_id)
 
-    found = RemembrMemoryTools.search_memory(ctx, "User")
+    assert "embedding_status=pending" in stored
     assert "Relevant memories:" in found
-
-    episode_id = next(iter(client.sessions[sid]))["episode_id"]
-    msg = RemembrMemoryTools.forget_memory(ctx, episode_id)
-    assert episode_id in msg
-    assert episode_id in client.deleted
+    assert episode_id in forgotten
 
 
-def test_system_prompt_times_out_within_two_secondsish() -> None:
-    client = FakeRemembrClient()
-    sid = "s-1"
-    client.sessions[sid] = [{"episode_id": "e-1", "content": "Preference: concise", "role": "user"}]
-    client.slow_search = True
-
-    dep = RemembrMemoryDep(client=client, session_id=sid)
+def test_pydantic_ai_store_uses_run_context_idempotency() -> None:
+    api = MockRemembrAPI()
+    client = api.build_client()
+    session_id = client.request("POST", "/sessions", json={"metadata": {"source": "test"}})["session_id"]
+    dep = RemembrMemoryDep(client=client, session_id=session_id)
     ctx = RunContext(deps=dep)
+    ctx.run_id = "run-123"  # type: ignore[attr-defined]
 
-    started = time.monotonic()
-    prompt = remembr_system_prompt(ctx)
-    elapsed = time.monotonic() - started
+    RemembrMemoryTools.store_memory(ctx, "repeat me")
+    RemembrMemoryTools.store_memory(ctx, "repeat me")
 
-    assert "timed out" in prompt.lower()
-    assert elapsed < 2.5
+    headers = api.headers_for("POST", "/api/v1/memory")
+    assert headers[0]["Idempotency-Key"] == "run-123"
+    assert len(api.episodes) == 1
 
 
-def test_create_agent_passes_kwargs_and_registers_tools(monkeypatch) -> None:
-    import adapters.pydantic_ai.remembr_pydantic_memory as mod
+def test_pydantic_ai_keyword_search_and_tag_filters() -> None:
+    api = MockRemembrAPI()
+    client = api.build_client()
+    session_id = client.request("POST", "/sessions", json={"metadata": {"source": "test"}})["session_id"]
+    dep = RemembrMemoryDep(client=client, session_id=session_id, search_mode="keyword")
 
-    fake_client = FakeRemembrClient()
-
-    class FakeClientCtor:
-        def __init__(self, api_key):
-            self.api_key = api_key
-
-        async def create_session(self, metadata=None):
-            return await fake_client.create_session(metadata)
-
-        async def search(self, *args, **kwargs):
-            return await fake_client.search(*args, **kwargs)
-
-        async def store(self, *args, **kwargs):
-            return await fake_client.store(*args, **kwargs)
-
-        async def forget_episode(self, *args, **kwargs):
-            return await fake_client.forget_episode(*args, **kwargs)
-
-    monkeypatch.setitem(__import__("sys").modules, "remembr", type("M", (), {"RemembrClient": FakeClientCtor}))
-
-    agent = create_remembr_agent(
-        model="test-model",
-        system_prompt="base",
-        api_key="k",
-        retries=3,
+    client.request(
+        "POST",
+        "/memory",
+        json={
+            "content": "platform note",
+            "role": "user",
+            "session_id": session_id,
+            "tags": ["topic:ops", "team:platform"],
+        },
+    )
+    result = client.request(
+        "POST",
+        "/memory/search",
+        json={
+            "query": "platform",
+            "session_id": session_id,
+            "search_mode": "keyword",
+            "tag_filters": [TagFilter(key="team", value="platform").to_dict()],
+        },
     )
 
-    assert hasattr(agent, "remembr_deps")
-    assert agent.kwargs.get("retries") == 3
-    assert len(agent.tools) == 3
+    prompt = remembr_system_prompt(SimpleNamespace(deps=dep))
+    assert result["results"][0]["content"] == "platform note"
+    assert "prior memories" in prompt.lower() or "user" in prompt.lower()

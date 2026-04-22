@@ -2,142 +2,105 @@ from __future__ import annotations
 
 import sys
 import types
-from dataclasses import dataclass
-from datetime import datetime, timezone
+
+from remembr import TagFilter
+
+from adapters.base.tests.mock_remembr_sdk import MockRemembrAPI
 
 
-# Provide lightweight LangChain stubs if langchain is not installed.
-if "langchain.memory.chat_memory" not in sys.modules:
-    langchain = types.ModuleType("langchain")
-    memory = types.ModuleType("langchain.memory")
-    chat_memory = types.ModuleType("langchain.memory.chat_memory")
+if "langchain_core.memory" not in sys.modules:
+    memory = types.ModuleType("langchain_core.memory")
 
-    class BaseChatMemory:  # pragma: no cover - used only when langchain is absent
+    class BaseMemory:  # pragma: no cover - shim
         def __init__(self, **kwargs):
             self.kwargs = kwargs
 
-    chat_memory.BaseChatMemory = BaseChatMemory
-    memory.chat_memory = chat_memory
-    langchain.memory = memory
-    sys.modules["langchain"] = langchain
-    sys.modules["langchain.memory"] = memory
-    sys.modules["langchain.memory.chat_memory"] = chat_memory
+    memory.BaseMemory = BaseMemory
+    sys.modules["langchain_core.memory"] = memory
 
 if "langchain_core.messages" not in sys.modules:
     messages = types.ModuleType("langchain_core.messages")
 
-    class _Message:  # pragma: no cover - used only when langchain is absent
+    class _Message:  # pragma: no cover - shim
         def __init__(self, content: str):
             self.content = content
 
     class HumanMessage(_Message):
-        pass
+        type = "human"
 
     class AIMessage(_Message):
-        pass
+        type = "ai"
 
     messages.HumanMessage = HumanMessage
     messages.AIMessage = AIMessage
     sys.modules["langchain_core.messages"] = messages
 
 from adapters.langchain.remembr_memory import RemembrMemory
+from langchain_core.messages import AIMessage, HumanMessage
 
 
-@dataclass
-class _Obj:
-    session_id: str | None = None
-    role: str | None = None
-    content: str | None = None
-    created_at: datetime | None = None
+def test_langchain_round_trip_keyword_and_clear() -> None:
+    api = MockRemembrAPI()
+    client = api.build_client()
+    memory = RemembrMemory(client=client, search_mode="keyword")
 
-
-class FakeSearchResult:
-    def __init__(self, episode_id: str, role: str, content: str):
-        self.episode_id = episode_id
-        self.role = role
-        self.content = content
-        self.score = 1.0
-        self.tags = []
-        self.created_at = datetime.now(timezone.utc)
-
-
-class FakeSearchResponse:
-    def __init__(self, results):
-        self.results = results
-
-
-class FakeRemembrClient:
-    def __init__(self):
-        self.sessions = {}
-        self.counter = 0
-
-    async def create_session(self, metadata=None):
-        self.counter += 1
-        sid = f"s-{self.counter}"
-        self.sessions[sid] = []
-        return _Obj(session_id=sid)
-
-    async def store(self, content, role="user", session_id=None, tags=None, metadata=None):
-        record = {
-            "episode_id": f"e-{len(self.sessions[session_id]) + 1}",
-            "content": content,
-            "role": role,
-        }
-        self.sessions[session_id].append(record)
-        return _Obj(
-            session_id=session_id,
-            role=role,
-            content=content,
-            created_at=datetime.now(timezone.utc),
-        )
-
-    async def search(self, query, session_id=None, **kwargs):
-        matches = [
-            FakeSearchResult(r["episode_id"], r["role"], r["content"])
-            for r in self.sessions.get(session_id, [])
-            if query.lower().split()[0] in r["content"].lower()
-        ]
-        return FakeSearchResponse(matches)
-
-    async def checkpoint(self, session_id):
-        return {"ok": True, "session_id": session_id}
-
-    async def forget_session(self, session_id):
-        self.sessions[session_id] = []
-        return {"deleted": True}
-
-
-def test_memory_persists_across_separate_instances() -> None:
-    client = FakeRemembrClient()
-
-    memory_a = RemembrMemory(client=client)
-    memory_a.save_context(
-        {"input": "My favorite language is Python"},
-        {"output": "Noted"},
-    )
-
-    memory_b = RemembrMemory(client=client, session_id=memory_a.session_id)
-    loaded = memory_b.load_memory_variables({"input": "favorite"})
-
-    assert memory_b.memory_key in loaded
-    assert len(loaded["history"]) >= 1
-    assert loaded["history"][0].content == "My favorite language is Python"
-
-
-def test_memory_key_always_present_when_no_results() -> None:
-    client = FakeRemembrClient()
-    memory = RemembrMemory(client=client)
-
-    loaded = memory.load_memory_variables({"input": "does-not-exist"})
-
-    assert loaded == {"history": []}
-
-
-def test_clear_forgets_session() -> None:
-    client = FakeRemembrClient()
-    memory = RemembrMemory(client=client)
-    memory.save_context({"input": "hello"}, {"output": "hi"})
-
+    memory.save_context({"input": "customer prefers python"}, {"output": "noted"})
+    loaded = memory.load_memory_variables({"input": "python"})
     memory.clear()
 
-    assert client.sessions[memory.session_id] == []
+    assert loaded["history"]
+    assert loaded["history"][0].content == "customer prefers python"
+    assert not [
+        episode
+        for episode in api.episodes.values()
+        if episode["session_id"] == memory.session_id and not episode["deleted"]
+    ]
+
+
+def test_langchain_write_idempotency_uses_session_hash_key() -> None:
+    api = MockRemembrAPI()
+    client = api.build_client()
+    memory = RemembrMemory(client=client)
+
+    message = HumanMessage(content="same turn")
+    memory.add_messages([message])
+    memory.add_messages([message])
+
+    active = [episode for episode in api.episodes.values() if not episode["deleted"]]
+    headers = api.headers_for("POST", "/api/v1/memory")
+
+    assert len(active) == 1
+    assert headers[0]["Idempotency-Key"] == headers[1]["Idempotency-Key"]
+    assert headers[0]["Idempotency-Key"].startswith(f"langchain-{memory.session_id}-")
+
+
+def test_langchain_structured_tag_filters_with_keyword_search() -> None:
+    api = MockRemembrAPI()
+    client = api.build_client()
+    memory = RemembrMemory(client=client, search_mode="keyword")
+
+    memory._store("python memory", role="user", tags=["topic:python", "scope:langchain"])
+    memory._store("golang memory", role="user", tags=["topic:go", "scope:langchain"])
+
+    messages = memory.get_messages(
+        query="python",
+        search_mode="keyword",
+        tag_filters=[TagFilter(key="topic", value="python")],
+    )
+
+    payload = api.payloads_for("POST", "/api/v1/memory/search")[-1]
+    assert len(messages) == 1
+    assert messages[0].content == "python memory"
+    assert payload["search_mode"] == "keyword"
+    assert payload["tag_filters"] == [{"key": "topic", "op": "eq", "value": "python"}]
+
+
+def test_langchain_get_messages_without_query_returns_history() -> None:
+    api = MockRemembrAPI()
+    client = api.build_client()
+    memory = RemembrMemory(client=client)
+
+    memory.add_messages([HumanMessage(content="hello"), AIMessage(content="hi")])
+
+    messages = memory.get_messages()
+    assert [message.content for message in messages] == ["hello", "hi"]

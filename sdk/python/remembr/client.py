@@ -268,6 +268,7 @@ class RemembrClient:
         *,
         params: dict[str, Any] | None = None,
         json: dict[str, Any] | None = None,
+        idempotency_key: str | None = None,
     ) -> dict[str, Any]:
         """Synchronous wrapper over :meth:`arequest` using ``asyncio.run()``.
 
@@ -280,7 +281,15 @@ class RemembrClient:
         Returns:
             The deserialized response payload (typically the API `data` object).
         """
-        return asyncio.run(self.arequest(method, path, params=params, json=json))
+        return asyncio.run(
+            self.arequest(
+                method,
+                path,
+                params=params,
+                json=json,
+                idempotency_key=idempotency_key,
+            )
+        )
 
     async def create_session(
         self,
@@ -408,6 +417,7 @@ class RemembrClient:
                 "created_at": data.get("created_at"),
                 "tags": tags or [],
                 "metadata": metadata,
+                "embedding_status": data.get("embedding_status"),
             }
         )
 
@@ -503,17 +513,26 @@ class RemembrClient:
             raise ServerError("Invalid session history payload returned by Remembr API.")
         return [Episode.model_validate(item) for item in episodes if isinstance(item, dict)]
 
-    async def checkpoint(self, session_id: str) -> CheckpointInfo:
+    async def checkpoint(
+        self,
+        session_id: str,
+        idempotency_key: str | None = None,
+    ) -> CheckpointInfo:
         """Create a checkpoint for a session context window.
 
         Args:
             session_id: Session identifier for which to create a checkpoint.
+            idempotency_key: Optional idempotency key to make this request safe to retry.
 
         Returns:
             A :class:`~remembr.models.CheckpointInfo` for the created checkpoint.
         """
         self._require_non_empty(session_id, "session_id")
-        data = await self.arequest("POST", f"/sessions/{session_id}/checkpoint")
+        data = await self.arequest(
+            "POST",
+            f"/sessions/{session_id}/checkpoint",
+            idempotency_key=idempotency_key,
+        )
         return CheckpointInfo.model_validate(data)
 
     async def restore(self, session_id: str, checkpoint_id: str) -> dict[str, Any]:

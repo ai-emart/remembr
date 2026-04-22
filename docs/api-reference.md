@@ -1,417 +1,348 @@
 # API Reference
 
-Base URL: `http://localhost:8000/api/v1`
+This reference documents the current V1 API surface exposed by the FastAPI server under `/api/v1`.
 
-Auth:
-- **Bearer JWT** for `/auth/*`, `/api-keys/*`, and all memory/session APIs.
-- **Bearer API key** is also supported by memory/session routes through auth middleware.
+## Conventions
 
-All responses use a standard envelope:
+- Base URL: `http://localhost:8000/api/v1`
+- Auth: `Authorization: Bearer <api-key-or-access-token>`
+- Response envelope: `{ "success": true, "data": ..., "request_id": "..." }`
+- Timestamps are ISO 8601 UTC strings
+- Soft-deleted memories do not appear in normal search results
+
+## Health
+
+### `GET /health`
+
+Public health probe for the server.
+
+Response shape:
 
 ```json
 {
-  "data": {},
-  "request_id": "req_..."
+  "status": "ok"
 }
 ```
 
-Errors follow a structured shape with `message`, optional `details.code`, and `request_id`.
+## Authentication
 
----
+### `POST /auth/register`
 
-## Idempotency
+Create a new organization and initial user.
 
-POST, PUT, and PATCH requests accept an optional `Idempotency-Key` header.  
-When present, the server caches the response for **24 hours** and replays it
-identically for any subsequent request carrying the same key from the same
-authenticated identity — without re-executing the route.
+Request body:
 
-**Rules:**
-- Key must be **non-empty** and **≤ 255 characters**.
-- Only **2xx** responses are cached. Error responses are never replayed.
-- Replayed responses include the header `X-Idempotent-Replay: true`.
-- Keys are scoped to the caller — two different API keys cannot collide even if
-  they send the same key string.
-
-**When to use it:**
-Use idempotency keys on any write that must not be duplicated — storing an
-episode after a transient network failure, creating a session on retry, etc.
-
-```bash
-# First call — executes the route and caches the response
-curl -X POST "$BASE_URL/memory" \
-  -H "Authorization: Bearer $API_KEY" \
-  -H "Idempotency-Key: my-unique-operation-id-001" \
-  -H "Content-Type: application/json" \
-  -d '{"role":"user","content":"Hello, world"}'
-
-# Second call with the same key — returns the cached response immediately
-curl -X POST "$BASE_URL/memory" \
-  -H "Authorization: Bearer $API_KEY" \
-  -H "Idempotency-Key: my-unique-operation-id-001" \
-  -H "Content-Type: application/json" \
-  -d '{"role":"user","content":"Hello, world"}'
-# → response header: X-Idempotent-Replay: true
-```
-
----
-
-## Auth
-
-### POST `/auth/register`
-Create organization + user and return access/refresh tokens.
-
-**Auth required:** No
-
-**Request body**
 ```json
 {
-  "email": "dev@example.com",
-  "password": "strong-password",
-  "org_name": "Acme AI"
+  "email": "user@example.com",
+  "password": "correct-horse-battery-staple",
+  "org_name": "Acme"
 }
 ```
 
-**Response body (`201`)**
+Response data:
+
 ```json
 {
-  "data": {
-    "access_token": "...",
-    "refresh_token": "...",
-    "token_type": "bearer"
-  },
-  "request_id": "..."
+  "access_token": "jwt",
+  "refresh_token": "jwt",
+  "token_type": "bearer"
 }
 ```
 
-**Error codes:** `EMAIL_ALREADY_REGISTERED`
+### `POST /auth/login`
 
-```bash
-curl -X POST "$BASE_URL/auth/register" \
-  -H "Content-Type: application/json" \
-  -d '{"email":"dev@example.com","password":"strong-password","org_name":"Acme AI"}'
-```
+Request body:
 
-### POST `/auth/login`
-Authenticate an existing user.
-
-**Auth required:** No
-
-**Request body**
-```json
-{"email":"dev@example.com","password":"strong-password"}
-```
-
-**Response body (`200`)**
 ```json
 {
-  "data": {
-    "access_token": "...",
-    "refresh_token": "...",
-    "token_type": "bearer"
-  }
+  "email": "user@example.com",
+  "password": "correct-horse-battery-staple"
 }
 ```
 
-**Error codes:** `INVALID_CREDENTIALS`, `INACTIVE_USER`
+Response data matches `register`.
 
-```bash
-curl -X POST "$BASE_URL/auth/login" \
-  -H "Content-Type: application/json" \
-  -d '{"email":"dev@example.com","password":"strong-password"}'
-```
+### `POST /auth/refresh`
 
-### POST `/auth/refresh`
-Exchange refresh token for a new access token.
+Request body:
 
-**Auth required:** No
-
-**Request body**
-```json
-{"refresh_token":"..."}
-```
-
-**Response body (`200`)**
 ```json
 {
-  "data": {
-    "access_token": "...",
-    "token_type": "bearer"
-  }
+  "refresh_token": "jwt"
 }
 ```
 
-**Error codes:** `TOKEN_INVALIDATED`, `INVALID_TOKEN_TYPE`, `INVALID_TOKEN_PAYLOAD`
+Response data:
 
-```bash
-curl -X POST "$BASE_URL/auth/refresh" \
-  -H "Content-Type: application/json" \
-  -d '{"refresh_token":"'$REFRESH_TOKEN'"}'
-```
-
-### POST `/auth/logout`
-Invalidate a refresh token.
-
-**Auth required:** No
-
-**Request body**
-```json
-{"refresh_token":"..."}
-```
-
-**Response body (`200`)**
-```json
-{"data":{"message":"Logged out"}}
-```
-
-**Error codes:** `INVALID_TOKEN_TYPE`
-
-```bash
-curl -X POST "$BASE_URL/auth/logout" \
-  -H "Content-Type: application/json" \
-  -d '{"refresh_token":"'$REFRESH_TOKEN'"}'
-```
-
-### GET `/auth/me`
-Get current user from access token.
-
-**Auth required:** JWT bearer token
-
-**Response body (`200`)**
 ```json
 {
-  "data": {
-    "id": "uuid",
-    "email": "dev@example.com",
-    "org_id": "uuid",
-    "team_id": null,
-    "is_active": true,
-    "created_at": "2026-01-01T00:00:00Z"
-  }
+  "access_token": "jwt",
+  "token_type": "bearer"
 }
 ```
 
-```bash
-curl "$BASE_URL/auth/me" -H "Authorization: Bearer $ACCESS_TOKEN"
+### `POST /auth/logout`
+
+Invalidates a refresh token.
+
+Request body:
+
+```json
+{
+  "refresh_token": "jwt"
+}
 ```
 
----
+### `GET /auth/me`
+
+Returns the authenticated user.
+
+## API Keys
+
+### `POST /api-keys`
+
+Create an API key for SDK and adapter use.
+
+Request body:
+
+```json
+{
+  "name": "langgraph-dev",
+  "agent_id": null,
+  "expires_at": null
+}
+```
+
+Response data:
+
+```json
+{
+  "id": "uuid",
+  "name": "langgraph-dev",
+  "api_key": "rk_...",
+  "org_id": "uuid",
+  "user_id": "uuid",
+  "agent_id": null,
+  "expires_at": null,
+  "created_at": "2026-04-22T10:00:00Z"
+}
+```
+
+### `GET /api-keys`
+
+List keys visible to the current org.
+
+### `DELETE /api-keys/{key_id}`
+
+Revoke a key.
 
 ## Sessions
 
-### POST `/sessions`
-Create a scoped session.
+### `POST /sessions`
 
-**Auth required:** JWT/API key
+Create a session.
 
-**Request body**
-```json
-{"metadata":{"source":"api-example"}}
-```
+Request body:
 
-**Response body (`201`)**
 ```json
 {
-  "data": {
-    "request_id": "...",
+  "metadata": {
+    "source": "docs",
+    "thread": "support-42"
+  }
+}
+```
+
+Response data:
+
+```json
+{
+  "request_id": "req_123",
+  "session_id": "uuid",
+  "org_id": "uuid",
+  "created_at": "2026-04-22T10:00:00Z",
+  "metadata": {
+    "source": "docs",
+    "thread": "support-42"
+  }
+}
+```
+
+Parameters:
+
+- `metadata`: optional JSON object
+- `Idempotency-Key` header: optional
+
+### `GET /sessions`
+
+List sessions in the current scope.
+
+Query params:
+
+- `limit`: integer, default `20`, max implementation-dependent
+- `offset`: integer, default `0`
+
+### `GET /sessions/{session_id}`
+
+Returns session metadata, short-term window messages, and token usage summary.
+
+Response data:
+
+```json
+{
+  "request_id": "req_123",
+  "session": {
     "session_id": "uuid",
     "org_id": "uuid",
-    "created_at": "...",
-    "metadata": {"source":"api-example"}
+    "created_at": "2026-04-22T10:00:00Z",
+    "metadata": {}
+  },
+  "messages": [
+    {
+      "role": "user",
+      "content": "Question",
+      "tokens": 3,
+      "priority_score": 1.0,
+      "timestamp": "2026-04-22T10:00:00Z"
+    }
+  ],
+  "token_usage": {
+    "message_count": 1,
+    "estimated_tokens": 3
   }
 }
 ```
 
-```bash
-curl -X POST "$BASE_URL/sessions" \
-  -H "Authorization: Bearer $API_KEY_OR_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"metadata":{"source":"api-example"}}'
-```
+### `GET /sessions/{session_id}/history`
 
-### GET `/sessions`
-List sessions in current scope.
+Returns stored episodes for a session.
 
-**Auth required:** JWT/API key
+Query params:
 
-**Query params:** `limit` (1-100), `offset` (>=0)
+- `limit`: integer, default `50`
+- `offset`: integer, default `0`
 
-**Response body (`200`)**
+### `POST /sessions/{session_id}/checkpoint`
+
+Create a short-term memory checkpoint.
+
+Headers:
+
+- `Idempotency-Key`: optional and recommended for orchestrators
+
+Response data:
+
 ```json
 {
-  "data": {
-    "request_id": "...",
-    "sessions": [
-      {
-        "session_id": "uuid",
-        "created_at": "...",
-        "metadata": {},
-        "message_count": 10
-      }
-    ],
-    "total": 1,
-    "limit": 20,
-    "offset": 0
-  }
+  "request_id": "req_123",
+  "checkpoint_id": "uuid",
+  "created_at": "2026-04-22T10:00:00Z",
+  "message_count": 12
 }
 ```
 
-```bash
-curl "$BASE_URL/sessions?limit=20&offset=0" -H "Authorization: Bearer $API_KEY_OR_TOKEN"
-```
+### `GET /sessions/{session_id}/checkpoints`
 
-### GET `/sessions/{session_id}`
-Get session details + short-term window messages.
+List checkpoints for a session.
 
-**Auth required:** JWT/API key
+### `POST /sessions/{session_id}/restore`
 
-**Response body (`200`)** includes `session`, `messages`, and `token_usage`.
+Restore the short-term window from a checkpoint.
 
-**Error codes:** `SESSION_NOT_FOUND`
+Request body:
 
-```bash
-curl "$BASE_URL/sessions/$SESSION_ID" -H "Authorization: Bearer $API_KEY_OR_TOKEN"
-```
-
-### GET `/sessions/{session_id}/history`
-Get episodic history for session.
-
-**Auth required:** JWT/API key
-
-**Query params:** `limit` (1-100), `offset` (>=0)
-
-**Error codes:** `SESSION_NOT_FOUND`
-
-```bash
-curl "$BASE_URL/sessions/$SESSION_ID/history?limit=50&offset=0" \
-  -H "Authorization: Bearer $API_KEY_OR_TOKEN"
-```
-
-### POST `/sessions/{session_id}/checkpoint`
-Create checkpoint from short-term memory window.
-
-**Auth required:** JWT/API key
-
-**Response body (`201`)**
 ```json
 {
-  "data": {
-    "request_id": "...",
-    "checkpoint_id": "uuid",
-    "created_at": "...",
-    "message_count": 5
-  }
+  "checkpoint_id": "uuid"
 }
 ```
 
-**Error codes:** `SESSION_NOT_FOUND`, `CHECKPOINT_NOT_FOUND`
+Response data:
 
-```bash
-curl -X POST "$BASE_URL/sessions/$SESSION_ID/checkpoint" \
-  -H "Authorization: Bearer $API_KEY_OR_TOKEN"
-```
-
-### POST `/sessions/{session_id}/restore`
-Restore short-term memory from checkpoint.
-
-**Auth required:** JWT/API key
-
-**Request body**
-```json
-{"checkpoint_id":"uuid"}
-```
-
-**Response body (`200`)**
 ```json
 {
-  "data": {
-    "request_id": "...",
-    "restored_message_count": 5,
-    "checkpoint_created_at": "..."
-  }
+  "request_id": "req_123",
+  "restored_message_count": 12,
+  "checkpoint_created_at": "2026-04-22T10:00:00Z"
 }
 ```
 
-**Error codes:** `SESSION_NOT_FOUND`, `CHECKPOINT_NOT_FOUND`
+### `GET /sessions/{session_id}/embedding-status`
 
-```bash
-curl -X POST "$BASE_URL/sessions/$SESSION_ID/restore" \
-  -H "Authorization: Bearer $API_KEY_OR_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"checkpoint_id":"'$CHECKPOINT_ID'"}'
+Aggregate embedding status for all episodes in the session.
+
+Response data:
+
+```json
+{
+  "session_id": "uuid",
+  "pending": 1,
+  "ready": 8,
+  "failed": 0,
+  "total": 9
+}
 ```
-
-### GET `/sessions/{session_id}/checkpoints`
-List session checkpoints.
-
-**Auth required:** JWT/API key
-
-```bash
-curl "$BASE_URL/sessions/$SESSION_ID/checkpoints" \
-  -H "Authorization: Bearer $API_KEY_OR_TOKEN"
-```
-
----
 
 ## Memory
 
-### POST `/memory`
-Store episodic memory (optionally attach to session).
+### `POST /memory`
 
-**Auth required:** JWT/API key
+Store an episode.
 
-**Request body**
+Request body:
+
 ```json
 {
   "role": "user",
-  "content": "Remember to send weekly KPI reports on Friday.",
-  "session_id": "uuid-optional",
-  "tags": ["kpi", "reporting"],
-  "metadata": {"source": "agent"}
-}
-```
-
-**Response body (`201`)**
-```json
-{
-  "data": {
-    "request_id": "...",
-    "episode_id": "uuid",
-    "session_id": "uuid",
-    "created_at": "...",
-    "token_count": 11
+  "content": "Customer prefers Friday summaries.",
+  "session_id": "uuid",
+  "tags": ["kind:preference", "customer:ada"],
+  "metadata": {
+    "source": "langgraph"
   }
 }
 ```
 
-**Error codes:** `SESSION_NOT_FOUND`
+Response data:
 
-```bash
-curl -X POST "$BASE_URL/memory" \
-  -H "Authorization: Bearer $API_KEY_OR_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"role":"user","content":"Remember to send weekly KPI reports on Friday.","session_id":"'$SESSION_ID'"}'
-```
-
-### POST `/memory/search`
-Search memory via semantic, keyword, or hybrid strategies.
-
-**Auth required:** JWT/API key
-
-**Request body**
 ```json
 {
-  "query": "When do I send KPI reports?",
-  "session_id": "uuid-optional",
-  "role": null,
-  "tags": ["kpi"],
+  "request_id": "req_123",
+  "episode_id": "uuid",
+  "session_id": "uuid",
+  "created_at": "2026-04-22T10:00:00Z",
+  "token_count": 4,
+  "embedding_status": "pending"
+}
+```
+
+Parameters:
+
+- `role`: required string
+- `content`: required string
+- `session_id`: optional UUID
+- `tags`: optional string array
+- `metadata`: optional object
+- `Idempotency-Key` header: optional
+
+### `POST /memory/search`
+
+Search episodes.
+
+Request body:
+
+```json
+{
+  "query": "When should summaries be sent?",
+  "session_id": "uuid",
+  "tags": ["customer:ada"],
   "tag_filters": [
-    { "key": "category", "value": "work", "op": "eq" },
-    { "key": "score",    "value": "0.7",  "op": "gte" }
+    {"key": "kind", "value": "preference", "op": "eq"}
   ],
-  "from_time": null,
-  "to_time": null,
-  "limit": 20,
+  "from_time": "2026-04-01T00:00:00Z",
+  "to_time": "2026-04-30T23:59:59Z",
+  "limit": 10,
   "offset": 0,
   "search_mode": "hybrid",
   "weights": {
@@ -422,447 +353,218 @@ Search memory via semantic, keyword, or hybrid strategies.
 }
 ```
 
-**Search modes**
+Search params:
 
-| Mode | What it does | Best for |
-|------|--------------|----------|
-| `semantic` | Vector similarity only. | Paraphrases, conceptual matches, fuzzy recall. |
-| `keyword` | PostgreSQL full-text lookup with `plainto_tsquery('english', ...)` and `ts_rank_cd(...)`. | Exact identifiers, SKUs, error codes, jargon. |
-| `hybrid` | Combines semantic score, keyword score, and recency score. | General-purpose retrieval with stronger recall across mixed query types. |
+- `query`: optional string in filter-only paths, normally required for retrieval
+- `session_id`: optional UUID
+- `role`: optional role filter
+- `tags`: exact-match flat tags
+- `tag_filters`: structured filters with `key`, optional `value`, and `op`
+- `from_time`, `to_time`: optional timestamps
+- `limit`: `1..100`
+- `offset`: `>=0`
+- `search_mode`: `semantic`, `keyword`, or `hybrid`
+- `weights`: hybrid weights that must sum to `1.0`
 
-`search_vector` currently uses PostgreSQL's `english` text search config for every org. If you need per-org dictionaries later, keep the trigger function but switch it to read an org-level config and rebuild `search_vector` for that org.
+Response data:
 
-**Hybrid weights**
-
-`weights` is optional and only used when `search_mode` is `hybrid`. The three values must sum to `1.0`.
-
-| Field | Default | Description |
-|-------|---------|-------------|
-| `semantic` | `0.6` | Weight for vector similarity. |
-| `keyword` | `0.3` | Weight for full-text ranking. |
-| `recency` | `0.1` | Weight for recency, using `exp(-hours_since_creation / 168)`. |
-
-Cookbook:
-- Support and operations logs: start with `{"semantic": 0.4, "keyword": 0.5, "recency": 0.1}` to favor exact codes, SKUs, and ticket identifiers.
-- Personal assistant memory: start with `{"semantic": 0.7, "keyword": 0.1, "recency": 0.2}` to favor paraphrases and softer recall of user preferences.
-- Fast-moving incident response: start with `{"semantic": 0.4, "keyword": 0.2, "recency": 0.4}` so recent but slightly imperfect matches can outrank stale exact hits.
-
-**`tag_filters` — structured tag filters**
-
-Each filter matches episodes whose `tags` array contains a `key:value` entry that
-satisfies the given operator.  Flat string tags (no colon) are also supported via
-`eq` and `ne`.  All filters are ANDed together.
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `key` | string | Yes | Tag key (the part before `:` in `key:value` tags). |
-| `value` | string | Conditional | Tag value. Required for `gt`, `gte`, `lt`, `lte`, `prefix`. |
-| `op` | string | No (default `eq`) | One of: `eq`, `ne`, `gt`, `gte`, `lt`, `lte`, `exists`, `prefix`. |
-
-**Operators:**
-
-| `op` | Meaning |
-|------|---------|
-| `eq` | Episode has tag `key:value` (or any `key:*` tag if `value` is omitted). |
-| `ne` | Episode does NOT have tag `key:value`. |
-| `exists` | Episode has at least one `key:*` tag. |
-| `prefix` | Episode has a tag starting with `key:value`. |
-| `gt` / `gte` / `lt` / `lte` | Numeric comparison on the value portion of `key:value`. |
-
-**Response body (`200`)** includes `results`, `total`, `query_time_ms`.
-
-**Error codes:** `INVALID_TIME_RANGE`
-
-```bash
-# Simple flat-tag search (backward-compatible)
-curl -X POST "$BASE_URL/memory/search" \
-  -H "Authorization: Bearer $API_KEY_OR_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"query":"When do I send KPI reports?","session_id":"'$SESSION_ID'","limit":5,"search_mode":"hybrid"}'
-
-# Structured tag filter: category=work AND score>=0.7
-curl -X POST "$BASE_URL/memory/search" \
-  -H "Authorization: Bearer $API_KEY_OR_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "query": "KPI reports",
-    "tag_filters": [
-      {"key":"category","value":"work","op":"eq"},
-      {"key":"score","value":"0.7","op":"gte"}
-    ]
-  }'
-
-# Keyword-first retrieval for exact identifiers
-curl -X POST "$BASE_URL/memory/search" \
-  -H "Authorization: Bearer $API_KEY_OR_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"query":"ERR_1234","search_mode":"keyword","limit":3}'
-
-# Hybrid retrieval with custom weights
-curl -X POST "$BASE_URL/memory/search" \
-  -H "Authorization: Bearer $API_KEY_OR_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "query": "recent billing incident",
-    "search_mode": "hybrid",
-    "weights": {"semantic": 0.4, "keyword": 0.2, "recency": 0.4}
-  }'
+```json
+{
+  "request_id": "req_123",
+  "results": [
+    {
+      "episode_id": "uuid",
+      "content": "Customer prefers Friday summaries.",
+      "role": "user",
+      "score": 0.93,
+      "created_at": "2026-04-22T10:00:00Z",
+      "tags": ["kind:preference", "customer:ada"]
+    }
+  ],
+  "total": 1,
+  "query_time_ms": 14
+}
 ```
 
-### GET `/memory/diff`
-List new memories between timestamps.
+### `DELETE /memory/{episode_id}`
 
-**Auth required:** JWT/API key
+Soft-delete one episode.
 
-**Query params:**
-- `from_time` (required ISO-8601)
-- `to_time` (required ISO-8601)
-- `session_id`, `user_id`, `role`, `tags` (optional)
+Response data:
 
-**Error codes:** `INVALID_TIME_RANGE`, `SESSION_NOT_FOUND`
-
-```bash
-curl "$BASE_URL/memory/diff?from_time=2026-01-01T00:00:00Z&to_time=2026-01-02T00:00:00Z&session_id=$SESSION_ID" \
-  -H "Authorization: Bearer $API_KEY_OR_TOKEN"
+```json
+{
+  "request_id": "req_123",
+  "deleted": true,
+  "episode_id": "uuid",
+  "soft": true,
+  "restorable_until": "2026-05-22T10:00:00Z"
+}
 ```
 
----
+### `DELETE /memory/session/{session_id}`
 
-## Management (Forgetting + API keys + service)
+Soft-delete all episodes in a session.
 
-### DELETE `/memory/{episode_id}`
-Delete one episode.
+### `DELETE /memory/user/{user_id}`
 
-**Auth required:** JWT/API key
+Soft-delete all episodes and sessions for a user within the current org.
 
-**Error codes:** `EPISODE_NOT_FOUND`
+### `DELETE /memory/{episode_id}/hard`
 
-```bash
-curl -X DELETE "$BASE_URL/memory/$EPISODE_ID" -H "Authorization: Bearer $API_KEY_OR_TOKEN"
+Permanently delete an episode.
+
+### `POST /memory/{episode_id}/restore`
+
+Restore a previously soft-deleted episode.
+
+### `GET /memory/{episode_id}/status`
+
+Return embedding status for a single episode.
+
+Response data:
+
+```json
+{
+  "episode_id": "uuid",
+  "embedding_status": "ready",
+  "embedding_generated_at": "2026-04-22T10:01:00Z",
+  "embedding_error": null
+}
 ```
 
-### DELETE `/memory/session/{session_id}`
-Delete all episodes in a session.
+### `GET /memory/diff`
 
-**Auth required:** JWT/API key
+Return episodes added during a time period.
 
-**Error codes:** `SESSION_NOT_FOUND`
+Typical query params:
 
-```bash
-curl -X DELETE "$BASE_URL/memory/session/$SESSION_ID" -H "Authorization: Bearer $API_KEY_OR_TOKEN"
+- `from_time`
+- `to_time`
+- `session_id`
+- `limit`
+
+Response data:
+
+```json
+{
+  "request_id": "req_123",
+  "added": [
+    {
+      "episode_id": "uuid",
+      "session_id": "uuid",
+      "role": "assistant",
+      "content": "Added a rollback warning.",
+      "created_at": "2026-04-22T10:00:00Z",
+      "tags": ["kind:feedback"]
+    }
+  ],
+  "period": {
+    "from_time": "2026-04-22T09:00:00Z",
+    "to_time": "2026-04-22T11:00:00Z"
+  },
+  "count": 1
+}
 ```
 
-### DELETE `/memory/user/{user_id}`
-Delete all sessions + episodes for a user (org-level authority required).
+## Export
 
-**Auth required:** Org-level JWT/API key (no user/agent scoping)
+### `GET /export`
 
-**Error codes:** `ORG_LEVEL_REQUIRED`
+Export episodes as streamed JSON or CSV.
 
-```bash
-curl -X DELETE "$BASE_URL/memory/user/$USER_ID" -H "Authorization: Bearer $API_KEY_OR_TOKEN"
-```
+Query params:
 
----
+- `format`: `json` or `csv`
+- `from_date`: optional
+- `to_date`: optional
+- `session_id`: optional
+- `include_deleted`: `true` or `false`
 
 ## Webhooks
 
-Webhook deliveries let you subscribe an org-owned HTTPS endpoint to core Remembr
-events. Deliveries are signed with an HMAC SHA-256 signature and retried with
-exponential backoff.
-
 Supported events:
+
 - `memory.stored`
 - `embedding.ready`
 - `session.created`
 - `memory.deleted`
 - `checkpoint.created`
 
-Delivery headers:
-- `X-Remembr-Event`: event name
-- `X-Remembr-Delivery`: delivery UUID
-- `X-Remembr-Signature`: `sha256=<hex_hmac(secret, raw_body)>`
+### `POST /webhooks`
 
-Retry policy:
-- Timeout: `10s`
-- Retry backoff: exponential
-- Maximum retries: `5`
-- After `20` consecutive failed deliveries, the webhook is auto-deactivated
+Request body:
 
-### POST `/webhooks`
-Register a webhook for the authenticated org.
-
-**Auth required:** JWT/API key
-
-**Request body**
 ```json
 {
-  "url": "https://example.com/remembr-webhook",
-  "events": ["memory.stored", "embedding.ready"],
+  "url": "https://example.com/remembr",
+  "events": ["memory.stored", "memory.deleted"],
   "active": true
 }
 ```
 
-**Response body (`201`)**
+Response data includes the generated secret on create and rotate:
+
 ```json
 {
-  "data": {
-    "id": "uuid",
-    "org_id": "uuid",
-    "url": "https://example.com/remembr-webhook",
-    "events": ["memory.stored", "embedding.ready"],
-    "active": true,
-    "created_at": "...",
-    "updated_at": "...",
-    "last_delivery_at": null,
-    "last_delivery_status": null,
-    "failure_count": 0,
-    "secret": "shown-once-only"
-  }
+  "id": "uuid",
+  "org_id": "uuid",
+  "url": "https://example.com/remembr",
+  "events": ["memory.stored"],
+  "active": true,
+  "created_at": "2026-04-22T10:00:00Z",
+  "updated_at": "2026-04-22T10:00:00Z",
+  "last_delivery_at": null,
+  "last_delivery_status": null,
+  "failure_count": 0,
+  "secret": "hex-string"
 }
 ```
 
-The `secret` is only returned on creation and secret rotation. Store it securely.
+### `GET /webhooks`
 
-```bash
-curl -X POST "$BASE_URL/webhooks" \
-  -H "Authorization: Bearer $API_KEY_OR_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "url":"https://example.com/remembr-webhook",
-    "events":["memory.stored","embedding.ready"],
-    "active":true
-  }'
-```
+List org webhooks.
 
-### GET `/webhooks`
-List webhooks for the authenticated org.
+### `GET /webhooks/{webhook_id}`
 
-**Auth required:** JWT/API key
+Get one webhook.
 
-```bash
-curl "$BASE_URL/webhooks" -H "Authorization: Bearer $API_KEY_OR_TOKEN"
-```
+### `PATCH /webhooks/{webhook_id}`
 
-### GET `/webhooks/{webhook_id}`
-Fetch one webhook by ID.
+Update `url`, `events`, or `active`.
 
-**Auth required:** JWT/API key
+### `DELETE /webhooks/{webhook_id}`
 
-```bash
-curl "$BASE_URL/webhooks/$WEBHOOK_ID" -H "Authorization: Bearer $API_KEY_OR_TOKEN"
-```
+Soft-delete and disable a webhook.
 
-### PATCH `/webhooks/{webhook_id}`
-Update the webhook URL, subscribed events, or active flag.
+### `POST /webhooks/{webhook_id}/rotate-secret`
 
-**Auth required:** JWT/API key
+Generate a new signing secret.
 
-```bash
-curl -X PATCH "$BASE_URL/webhooks/$WEBHOOK_ID" \
-  -H "Authorization: Bearer $API_KEY_OR_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"events":["checkpoint.created"],"active":false}'
-```
+### `GET /webhooks/{webhook_id}/deliveries`
 
-### DELETE `/webhooks/{webhook_id}`
-Soft-delete a webhook. Deleted webhooks are no longer used for delivery.
+List recent deliveries.
 
-**Auth required:** JWT/API key
+### `POST /webhooks/{webhook_id}/test`
 
-```bash
-curl -X DELETE "$BASE_URL/webhooks/$WEBHOOK_ID" \
-  -H "Authorization: Bearer $API_KEY_OR_TOKEN"
-```
+Enqueue a `webhook.test` delivery.
 
-### POST `/webhooks/{webhook_id}/rotate-secret`
-Generate a new signing secret. The new secret is returned once and immediately
-invalidates the old secret.
+## SDK mapping
 
-**Auth required:** JWT/API key
+Python SDK methods map to the API like this:
 
-```bash
-curl -X POST "$BASE_URL/webhooks/$WEBHOOK_ID/rotate-secret" \
-  -H "Authorization: Bearer $API_KEY_OR_TOKEN"
-```
+- `create_session()` -> `POST /sessions`
+- `get_session()` -> `GET /sessions/{session_id}`
+- `list_sessions()` -> `GET /sessions`
+- `store()` -> `POST /memory`
+- `search()` -> `POST /memory/search`
+- `get_session_history()` -> `GET /sessions/{session_id}/history`
+- `checkpoint()` -> `POST /sessions/{session_id}/checkpoint`
+- `restore()` -> `POST /sessions/{session_id}/restore`
+- `list_checkpoints()` -> `GET /sessions/{session_id}/checkpoints`
+- `forget_episode()` -> `DELETE /memory/{episode_id}`
+- `forget_session()` -> `DELETE /memory/session/{session_id}`
+- `forget_user()` -> `DELETE /memory/user/{user_id}`
+- `export()` -> `GET /export`
+- `client.webhooks.*` -> `/webhooks/*`
 
-### GET `/webhooks/{webhook_id}/deliveries`
-List recent delivery attempts for a webhook.
-
-**Auth required:** JWT/API key
-
-**Query params:** `limit` (1-100, default `20`)
-
-```bash
-curl "$BASE_URL/webhooks/$WEBHOOK_ID/deliveries?limit=20" \
-  -H "Authorization: Bearer $API_KEY_OR_TOKEN"
-```
-
-### POST `/webhooks/{webhook_id}/test`
-Queue a synthetic `webhook.test` delivery so you can verify reachability and
-signature handling without waiting for a real product event.
-
-**Auth required:** JWT/API key
-
-```bash
-curl -X POST "$BASE_URL/webhooks/$WEBHOOK_ID/test" \
-  -H "Authorization: Bearer $API_KEY_OR_TOKEN"
-```
-
-### Signature Verification
-
-Python:
-```python
-import hashlib
-import hmac
-
-def verify_remembr_signature(secret: str, raw_body: bytes, header_value: str) -> bool:
-    expected = hmac.new(secret.encode("utf-8"), raw_body, hashlib.sha256).hexdigest()
-    return hmac.compare_digest(header_value, f"sha256={expected}")
-```
-
-Node:
-```js
-import crypto from 'node:crypto';
-
-export function verifyRemembrSignature(secret, rawBody, headerValue) {
-  const expected = crypto.createHmac('sha256', secret).update(rawBody).digest('hex');
-  return crypto.timingSafeEqual(
-    Buffer.from(headerValue),
-    Buffer.from(`sha256=${expected}`)
-  );
-}
-```
-
-### POST `/api-keys`
-Create API key.
-
-**Auth required:** JWT bearer token
-
-**Request body**
-```json
-{
-  "name": "ci-e2e-key",
-  "agent_id": null,
-  "expires_at": null
-}
-```
-
-```bash
-curl -X POST "$BASE_URL/api-keys" \
-  -H "Authorization: Bearer $ACCESS_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"name":"ci-e2e-key"}'
-```
-
-### GET `/api-keys`
-List API keys in org.
-
-**Auth required:** JWT bearer token
-
-```bash
-curl "$BASE_URL/api-keys" -H "Authorization: Bearer $ACCESS_TOKEN"
-```
-
-### DELETE `/api-keys/{key_id}`
-Revoke API key.
-
-**Auth required:** JWT bearer token
-
-**Error codes:** `API_KEY_NOT_FOUND`
-
-```bash
-curl -X DELETE "$BASE_URL/api-keys/$KEY_ID" -H "Authorization: Bearer $ACCESS_TOKEN"
-```
-
----
-
-## Export
-
-### GET `/export`
-Stream all episodes for the authenticated scope as JSON or CSV without buffering
-the entire dataset in memory.
-
-**Auth required:** API key or JWT bearer token
-
-**Query parameters**
-
-| Parameter        | Type      | Default | Description |
-|------------------|-----------|---------|-------------|
-| `format`         | `json\|csv` | `json`  | Output format. |
-| `from_date`      | ISO 8601  | —       | Lower bound for `created_at`. |
-| `to_date`        | ISO 8601  | —       | Upper bound for `created_at`. |
-| `session_id`     | UUID      | —       | Limit to a single session. |
-| `include_deleted`| bool      | `false` | Include soft-deleted episodes. |
-
-**JSON response** — streaming `application/json` array, one object per episode:
-```json
-[
-  {"id":"…","session_id":"…","role":"user","content":"…","tags":[],"metadata":{},"created_at":"…","embedding_status":"ready"},
-  …
-]
-```
-
-**CSV response** — streaming `text/csv` with headers:
-```
-id,session_id,role,content,tags,metadata,created_at,embedding_status
-```
-Tags are semicolon-joined; metadata is JSON-encoded.
-
-```bash
-# JSON export
-curl "$BASE_URL/export" \
-  -H "Authorization: Bearer $API_KEY" \
-  --output export.json
-
-# CSV export with date filter
-curl "$BASE_URL/export?format=csv&from_date=2026-01-01T00:00:00Z" \
-  -H "Authorization: Bearer $API_KEY" \
-  --output export.csv
-```
-
----
-
-### GET `/health`
-Service health status.
-
-**Auth required:** No
-
-```bash
-curl "$BASE_URL/health"
-```
-
-### GET `/me`
-Auth middleware context (`org_id`, `user_id`, `agent_id`, `auth_method`).
-
-**Auth required:** JWT/API key
-
-```bash
-curl "$BASE_URL/me" -H "Authorization: Bearer $API_KEY_OR_TOKEN"
-```
-
----
-
-## Error model
-
-Common HTTP statuses:
-- `400` validation failures
-- `401/403` authentication or authorization issues
-- `404` not found
-- `409` conflict
-- `429` rate limited
-- `5xx` transient server errors
-
-Common application error codes used by these endpoints:
-- `EMAIL_ALREADY_REGISTERED`
-- `INVALID_CREDENTIALS`
-- `INACTIVE_USER`
-- `TOKEN_INVALIDATED`
-- `INVALID_TOKEN_TYPE`
-- `INVALID_TOKEN_PAYLOAD`
-- `SESSION_NOT_FOUND`
-- `CHECKPOINT_NOT_FOUND`
-- `EPISODE_NOT_FOUND`
-- `INVALID_TIME_RANGE`
-- `ORG_LEVEL_REQUIRED`
-- `API_KEY_NOT_FOUND`

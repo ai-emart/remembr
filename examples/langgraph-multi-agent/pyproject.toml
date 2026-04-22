@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "remembr-langgraph-multi-agent-example"
+version = "0.1.0"
+description = "Three-agent LangGraph example that shares Remembr memory"
+requires-python = ">=3.11"
+dependencies = [
+  "langgraph>=0.2.0",
+  "langchain-openai>=0.2.0",
+  "python-dotenv>=1.0.0",
+  "remembr @ file:../../sdk/python",
+]
+
+[tool.setuptools.packages.find]
+include = ["src*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

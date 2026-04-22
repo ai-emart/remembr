@@ -1,0 +1,17 @@
+services:
+  example-runner:
+    extends:
+      file: ../../docker-compose.yml
+      service: server
+    container_name: remembr-langgraph-multi-agent-runner
+    working_dir: /workspace/examples/langgraph-multi-agent
+    command: >
+      sh -lc "pip install -e /workspace/sdk/python &&
+      pip install -e /workspace/examples/langgraph-multi-agent &&
+      tail -f /dev/null"
+    volumes:
+      - ../../:/workspace
+    env_file:
+      - ./.env
+    healthcheck:
+      disable: true

@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from datetime import datetime, timezone
+from remembr import TagFilter
 
+from adapters.base.tests.mock_remembr_sdk import MockRemembrAPI
 from adapters.llamaindex.remembr_llamaindex_memory import (
     ChatMessage,
     MessageRole,
@@ -12,113 +12,68 @@ from adapters.llamaindex.remembr_llamaindex_memory import (
 )
 
 
-@dataclass
-class _Episode:
-    episode_id: str
-    session_id: str
-    role: str
-    content: str
-    created_at: datetime
+def test_llamaindex_round_trip_keyword_and_delete() -> None:
+    api = MockRemembrAPI()
+    client = api.build_client()
+    semantic = RemembrSemanticMemory.from_client(client, search_kwargs={"limit": 5, "search_mode": "keyword"})
+    semantic.save_context({"input": "customer timezone is WAT"}, {"output": "saved"})
+
+    result = semantic.load_context({"input": "timezone"})
+    semantic._run(client.forget_session(semantic.session_id))
+
+    assert result["results"]
+    assert "timezone" in result["results"][0].content.lower()
 
 
-class _Result:
-    def __init__(self, episode_id: str, content: str, role: str = "user", score: float = 1.0):
-        self.episode_id = episode_id
-        self.content = content
-        self.role = role
-        self.score = score
-        self.created_at = datetime.now(timezone.utc)
-
-
-class _SearchResult:
-    def __init__(self, results):
-        self.results = results
-
-
-class _Session:
-    def __init__(self, session_id: str):
-        self.session_id = session_id
-
-
-class FakeRemembrClient:
-    def __init__(self):
-        self.counter = 0
-        self.sessions: dict[str, list[dict]] = {}
-
-    async def create_session(self, metadata=None):
-        self.counter += 1
-        sid = f"s-{self.counter}"
-        self.sessions[sid] = []
-        return _Session(sid)
-
-    async def get_session_history(self, session_id: str, limit: int = 200):
-        items = self.sessions.get(session_id, [])[:limit]
-        return [
-            _Episode(
-                episode_id=item["episode_id"],
-                session_id=session_id,
-                role=item["role"],
-                content=item["content"],
-                created_at=datetime.now(timezone.utc),
-            )
-            for item in items
-        ]
-
-    async def store(self, content, role="user", session_id=None, tags=None, metadata=None):
-        idx = len(self.sessions[session_id]) + 1
-        self.sessions[session_id].append({"episode_id": f"e-{idx}", "content": content, "role": role})
-
-    async def forget_session(self, session_id):
-        self.sessions[session_id] = []
-
-    async def search(self, query, session_id=None, limit=20, mode="hybrid", **kwargs):
-        q = query.lower()
-        found = [
-            _Result(item["episode_id"], item["content"], item["role"])
-            for item in self.sessions.get(session_id, [])
-            if q in item["content"].lower()
-        ]
-        return _SearchResult(found[:limit])
-
-
-def test_chat_store_is_drop_in_basic_flow() -> None:
-    client = FakeRemembrClient()
-    session = RemembrSemanticMemory.from_client(client).session_id
+def test_llamaindex_chat_store_and_buffer_use_current_search_mode() -> None:
+    api = MockRemembrAPI()
+    client = api.build_client()
+    session_id = RemembrSemanticMemory.from_client(client).session_id
     store = RemembrChatStore(client)
 
-    store.add_message(session, ChatMessage(role=MessageRole.USER, content="hello"))
-    store.add_message(session, ChatMessage(role=MessageRole.ASSISTANT, content="hi there"))
+    store.add_message(session_id, ChatMessage(role=MessageRole.USER, content="keyword retriever"))
+    buffer = RemembrMemoryBuffer(client=client, session_id=session_id, search_mode="keyword", token_limit=10)
+    messages = buffer.get(input="keyword")
 
-    messages = store.get_messages(session)
-    assert len(messages) == 2
-    assert messages[0].content == "hello"
-
-    store.delete_messages(session)
-    assert store.get_messages(session) == []
+    payload = api.payloads_for("POST", "/api/v1/memory/search")[-1]
+    assert messages
+    assert payload["search_mode"] == "keyword"
 
 
-def test_memory_buffer_get_uses_semantic_search_and_token_limit() -> None:
-    client = FakeRemembrClient()
+def test_llamaindex_structured_tag_filters_flow_through_retriever() -> None:
+    api = MockRemembrAPI()
+    client = api.build_client()
+    semantic = RemembrSemanticMemory.from_client(client)
+    semantic._store("ops handbook", role="user", tags=["topic:ops", "team:platform"])
+
+    retriever = semantic.as_retriever(
+        search_mode="keyword",
+        tag_filters=[TagFilter(key="team", value="platform")],
+    )
+    docs = retriever.retrieve("handbook")
+
+    payload = api.payloads_for("POST", "/api/v1/memory/search")[-1]
+    assert len(docs) == 1
+    assert payload["tag_filters"] == [{"key": "team", "op": "eq", "value": "platform"}]
+
+
+def test_llamaindex_idempotent_store_round_trip() -> None:
+    api = MockRemembrAPI()
+    client = api.build_client()
     session_id = RemembrSemanticMemory.from_client(client).session_id
 
-    store = RemembrChatStore(client)
-    store.add_message(session_id, ChatMessage(role=MessageRole.USER, content="timeout is 30 seconds"))
-    store.add_message(session_id, ChatMessage(role=MessageRole.USER, content="retry count is 3"))
+    client.request(
+        "POST",
+        "/memory",
+        json={"content": "same note", "role": "user", "session_id": session_id},
+        idempotency_key="llamaindex-1",
+    )
+    second = client.request(
+        "POST",
+        "/memory",
+        json={"content": "same note", "role": "user", "session_id": session_id},
+        idempotency_key="llamaindex-1",
+    )
 
-    memory = RemembrMemoryBuffer(client=client, session_id=session_id, token_limit=4)
-    out = memory.get(input="timeout")
-
-    assert len(out) == 1
-    assert "timeout" in out[0].content
-
-
-def test_semantic_memory_retriever_roundtrip() -> None:
-    client = FakeRemembrClient()
-    semantic = RemembrSemanticMemory.from_client(client)
-
-    semantic.save_context({"input": "Use edge-case tests"}, {"output": "Will do"})
-    retriever = semantic.as_retriever()
-    docs = retriever.retrieve("edge-case")
-
-    assert len(docs) >= 1
-    assert "edge-case" in docs[0]["text"].lower()
+    assert second["episode_id"] == "ep-1"
+    assert len(api.episodes) == 1

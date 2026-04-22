@@ -5,9 +5,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, TYPE_CHECKING
 
+from remembr import SearchWeights, TagFilter
+
 from adapters.base.error_handling import with_remembr_fallback
 from adapters.base.remembr_adapter_base import BaseRemembrAdapter
-from adapters.base.utils import format_messages_for_llm, parse_role, truncate_to_token_limit
+from adapters.base.utils import parse_role
 
 if TYPE_CHECKING:
     from remembr import RemembrClient
@@ -98,7 +100,12 @@ class RemembrChatStore(BaseChatStore):
 
 
 class RemembrMemoryBuffer(ChatMemoryBuffer):
-    """Memory buffer that retrieves semantically relevant context from Remembr."""
+    """Memory buffer that retrieves relevant context from Remembr.
+
+    Notes:
+        Newly stored messages may have ``embedding_status="pending"``. Immediate retrieval after
+        ``add_message`` may not surface them until embedding generation completes.
+    """
 
     def __init__(
         self,
@@ -106,11 +113,17 @@ class RemembrMemoryBuffer(ChatMemoryBuffer):
         session_id: str,
         token_limit: int = 2048,
         search_limit: int = 20,
+        search_mode: str = "hybrid",
+        tag_filters: list[TagFilter] | None = None,
+        weights: SearchWeights | dict[str, float] | None = None,
         **kwargs: Any,
     ) -> None:
         self.client = client
         self.session_id = session_id
         self.search_limit = search_limit
+        self.search_mode = search_mode
+        self.tag_filters = tag_filters
+        self.weights = weights
         self.chat_store = RemembrChatStore(client)
         super().__init__(
             chat_store=self.chat_store,
@@ -131,7 +144,9 @@ class RemembrMemoryBuffer(ChatMemoryBuffer):
                 query=query,
                 session_id=self.session_id,
                 limit=self.search_limit,
-                mode="hybrid",
+                search_mode=self.search_mode,
+                tag_filters=self.tag_filters,
+                weights=self.weights,
             )
         )
         messages: list[ChatMessage] = []
@@ -191,18 +206,18 @@ class RemembrSemanticMemory(BaseRemembrAdapter):
         self,
         client: "RemembrClient",
         session_id: str | None = None,
-        scope_metadata: dict[str, Any] = {},
+        scope_metadata: dict[str, Any] | None = None,
         search_kwargs: dict[str, Any] | None = None,
     ) -> None:
         super().__init__(client=client, session_id=session_id, scope_metadata=scope_metadata)
-        self.search_kwargs = search_kwargs or {"limit": 10, "mode": "hybrid"}
+        self.search_kwargs = search_kwargs or {"limit": 10, "search_mode": "hybrid"}
 
     @classmethod
     def from_client(
         cls,
         client: "RemembrClient",
         session_id: str | None = None,
-        scope_metadata: dict[str, Any] = {},
+        scope_metadata: dict[str, Any] | None = None,
         search_kwargs: dict[str, Any] | None = None,
     ) -> "RemembrSemanticMemory":
         return cls(
@@ -212,11 +227,21 @@ class RemembrSemanticMemory(BaseRemembrAdapter):
             search_kwargs=search_kwargs,
         )
 
-    def as_retriever(self) -> _RemembrRetriever:
+    def as_retriever(
+        self,
+        *,
+        search_mode: str | None = None,
+        tag_filters: list[TagFilter] | None = None,
+    ) -> _RemembrRetriever:
+        search_kwargs = dict(self.search_kwargs)
+        if search_mode is not None:
+            search_kwargs["search_mode"] = search_mode
+        if tag_filters is not None:
+            search_kwargs["tag_filters"] = tag_filters
         return _RemembrRetriever(
             client=self.client,
             session_id=self.session_id,
-            search_kwargs=self.search_kwargs,
+            search_kwargs=search_kwargs,
         )
 
     def save_context(self, inputs: dict[str, Any], outputs: dict[str, Any]) -> None:
