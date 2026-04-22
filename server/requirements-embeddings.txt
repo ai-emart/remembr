@@ -3,7 +3,7 @@
 # Or install only what you need.
 
 # sentence-transformers (default provider — local, no API key needed)
-sentence-transformers>=2.7.0
+sentence-transformers>=5.4.1
 
 # OpenAI (EMBEDDING_PROVIDER=openai)
 openai>=1.30.0
