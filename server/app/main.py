@@ -63,9 +63,20 @@ async def lifespan(app: FastAPI):
 
     # Initialize Redis
     from app.db.redis import init_redis
+    from app.observability import setup_otel, shutdown_otel
 
     try:
         await init_redis()
+        from app.celery_app import celery_app
+        from app.db.redis import get_redis_client
+        from app.db.session import engine
+
+        setup_otel(
+            app,
+            engine=engine,
+            redis_client=get_redis_client(),
+            celery_app=celery_app,
+        )
         logger.info("Application startup", version="0.1.0", redis="connected")
     except Exception as e:
         logger.error("Failed to initialize Redis", error=str(e))
@@ -77,6 +88,7 @@ async def lifespan(app: FastAPI):
     # Shutdown
     from app.db.redis import close_redis
 
+    await shutdown_otel()
     await close_redis()
     logger.info("Application shutdown")
 

@@ -25,6 +25,7 @@ from app.exceptions import AuthorizationError, NotFoundError, ValidationError
 from app.middleware.context import RequestContext, require_auth
 from app.middleware.rate_limit import get_search_limit, limiter
 from app.models import Episode, Session
+from app.observability import record_memory_stored
 from app.services.cache import CacheService
 from app.services.episodic import EpisodicMemory
 from app.services.events import emit_event_safely
@@ -578,6 +579,7 @@ async def log_memory(
         await short_term.add_message(str(payload.session_id), message)
 
     await db.commit()
+    record_memory_stored(str(episode.org_id))
 
     await emit_event_safely(
         event_name="memory.stored",
@@ -629,6 +631,7 @@ async def create_session_checkpoint(
         raise NotFoundError("Checkpoint not found", details={"code": CHECKPOINT_NOT_FOUND})
 
     await db.commit()
+    record_memory_stored(str(scope.org_id))
 
     await emit_event_safely(
         event_name="checkpoint.created",

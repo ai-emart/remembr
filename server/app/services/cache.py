@@ -7,6 +7,8 @@ from loguru import logger
 from redis.asyncio import Redis
 from redis.exceptions import RedisError
 
+from app.observability import record_cache_access
+
 # TTL constants (in seconds)
 SESSION_TTL = 3600  # 1 hour
 SHORT_TERM_TTL = 1800  # 30 minutes
@@ -92,11 +94,13 @@ class CacheService:
             value = await self.redis.get(key)
 
             if value is None:
+                record_cache_access(False)
                 logger.debug("Cache miss", key=key)
                 return None
 
             # Deserialize from JSON
             deserialized = json.loads(value)
+            record_cache_access(True)
             logger.debug("Cache hit", key=key)
             return deserialized
 

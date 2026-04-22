@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.db.session import AsyncSessionLocal
 from app.models import AuditLog, Embedding, Episode, Session
+from app.observability import record_memory_deleted
 from app.services.cache import CacheService, make_key
 from app.services.events import emit_event_safely
 from app.services.scoping import MemoryScope
@@ -147,6 +148,7 @@ class ForgettingService:
                 },
                 org_id=filters["org_id"],
             )
+            record_memory_deleted(str(filters["org_id"]), 1)
             return SoftDeleteResult(deleted=True, soft=True, restorable_until=restorable_until)
         except Exception as exc:
             await self._write_audit(
@@ -247,6 +249,7 @@ class ForgettingService:
                 },
                 org_id=filters["org_id"],
             )
+            record_memory_deleted(str(filters["org_id"]), deleted_count)
             return deleted_count, restorable_until
         except Exception as exc:
             await self._write_audit(
@@ -354,6 +357,7 @@ class ForgettingService:
                 },
                 org_id=org_id,
             )
+            record_memory_deleted(str(org_id), deleted_episodes)
 
             return UserDeleteResult(
                 deleted_episodes=deleted_episodes,
@@ -432,6 +436,7 @@ class ForgettingService:
                 },
                 org_id=filters["org_id"],
             )
+            record_memory_deleted(str(filters["org_id"]), 1)
             return True
         except Exception as exc:
             await self._write_audit(
@@ -519,6 +524,7 @@ class ForgettingService:
                 },
                 org_id=filters["org_id"],
             )
+            record_memory_deleted(str(filters["org_id"]), deleted_count)
             return deleted_count
         except Exception as exc:
             await self._write_audit(
@@ -637,6 +643,7 @@ class ForgettingService:
                 },
                 org_id=org_id,
             )
+            record_memory_deleted(str(org_id), deleted_episodes)
             return UserDeleteResult(
                 deleted_episodes=deleted_episodes,
                 deleted_sessions=deleted_sessions,

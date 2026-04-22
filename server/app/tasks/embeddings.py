@@ -5,11 +5,14 @@ from __future__ import annotations
 import asyncio
 import concurrent.futures
 from datetime import UTC, datetime
+from time import perf_counter
 
 from loguru import logger
 
 from app.celery_app import celery_app
+from app.config import get_settings
 from app.db.session import AsyncSessionLocal
+from app.observability import get_tracer, record_embedding_generated
 
 
 def _run_async(coro):
@@ -30,8 +33,10 @@ async def _do_generate_embedding(episode_id: str) -> None:
     from app.services.embeddings import get_embedding_provider
 
     provider = get_embedding_provider()
+    provider_name = get_settings().embedding_provider
     event_payload: dict | None = None
     event_org_id = None
+    tracer = get_tracer("app.tasks.embeddings")
 
     async with AsyncSessionLocal() as db:
         episode = await db.get(Episode, episode_id)
@@ -39,7 +44,25 @@ async def _do_generate_embedding(episode_id: str) -> None:
             logger.warning("Skipping embedding: episode not found", episode_id=episode_id)
             return
 
-        vector, dimensions = await provider.generate_embedding(episode.content)
+        started_at = perf_counter()
+        try:
+            with tracer.start_as_current_span(
+                "embedding.generate",
+                attributes={
+                    "provider": provider_name,
+                    "model": provider.model,
+                    "text_length": len(episode.content),
+                },
+            ):
+                vector, dimensions = await provider.generate_embedding(episode.content)
+        except Exception:
+            record_embedding_generated(
+                provider=provider_name,
+                model=provider.model,
+                status="failed",
+                duration_ms=(perf_counter() - started_at) * 1000,
+            )
+            raise
 
         result = await db.execute(
             select(Embedding).where(Embedding.episode_id == episode.id)
@@ -78,6 +101,12 @@ async def _do_generate_embedding(episode_id: str) -> None:
         }
 
         await db.commit()
+        record_embedding_generated(
+            provider=provider_name,
+            model=provider.model,
+            status="ready",
+            duration_ms=(perf_counter() - started_at) * 1000,
+        )
         logger.debug("Embedding stored", episode_id=episode_id, dims=dimensions)
 
     if event_payload is not None and event_org_id is not None:

@@ -6,6 +6,7 @@ from celery import Celery
 from celery.schedules import crontab
 
 from app.config import get_settings
+from app.observability import setup_otel
 
 
 def create_celery_app() -> Celery:
@@ -33,6 +34,7 @@ def create_celery_app() -> Celery:
             },
         },
     )
+    setup_otel(celery_app=app)
     return app
 
 

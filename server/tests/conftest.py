@@ -122,6 +122,15 @@ class _FakeRedis(Redis):
         self._purge_expired()
         return [self._store.get(key) for key in keys]
 
+    async def llen(self, key: str) -> int:
+        self._purge_expired()
+        value = self._store.get(key)
+        if value is None:
+            return 0
+        if isinstance(value, list):
+            return len(value)
+        return 0
+
     async def scan_iter(self, match: str | None = None):
         self._purge_expired()
         for key in list(self._store):

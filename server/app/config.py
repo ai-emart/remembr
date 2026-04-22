@@ -51,6 +51,22 @@ class Settings(BaseSettings):
         default=None,
         description="Sentry DSN for error tracking (optional)",
     )
+    otel_enabled: bool = Field(
+        default=False,
+        description="Enable OpenTelemetry traces and metrics export",
+    )
+    otel_service_name: str = Field(
+        default="remembr",
+        description="OpenTelemetry service.name resource attribute",
+    )
+    otel_exporter_endpoint: str | None = Field(
+        default=None,
+        description="OTLP gRPC endpoint, for example http://localhost:4317",
+    )
+    otel_traces_sample_rate: float = Field(
+        default=1.0,
+        description="Trace sampling rate between 0.0 and 1.0",
+    )
 
     # Environment
     environment: Literal["local", "staging", "production"] = Field(
@@ -171,6 +187,13 @@ class Settings(BaseSettings):
     def validate_rate_limits(cls, v: int) -> int:
         if v < 1:
             raise ValueError("rate limits must be >= 1")
+        return v
+
+    @field_validator("otel_traces_sample_rate")
+    @classmethod
+    def validate_otel_traces_sample_rate(cls, v: float) -> float:
+        if v < 0 or v > 1:
+            raise ValueError("otel_traces_sample_rate must be between 0.0 and 1.0")
         return v
 
     @property

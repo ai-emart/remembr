@@ -5,6 +5,7 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
+from time import perf_counter
 from typing import Any
 
 from sqlalchemy import ARRAY, DateTime, String, bindparam, text
@@ -12,6 +13,7 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.models import Episode
+from app.observability import get_tracer, record_search
 from app.repositories import episode_repo
 from app.services.embeddings import EmbeddingProvider, get_embedding_provider
 from app.services.scoping import MemoryScope
@@ -71,6 +73,23 @@ class EpisodicMemory:
     @property
     def _provider(self) -> EmbeddingProvider:
         return get_embedding_provider()
+
+    async def _finalize_search(
+        self,
+        *,
+        scope: MemoryScope,
+        mode: str,
+        started_at: float,
+        rows: Any,
+    ) -> list[EpisodeSearchResult]:
+        record_search(scope.org_id, mode, (perf_counter() - started_at) * 1000)
+        return [
+            EpisodeSearchResult(
+                episode=_row_to_episode(row),
+                similarity_score=float(row.similarity_score),
+            )
+            for row in rows
+        ]
 
     async def log(
         self,
@@ -172,14 +191,24 @@ class EpisodicMemory:
         tag_filters: list[TagFilter] | None = None,
     ) -> list[EpisodeSearchResult]:
         """Run semantic search against episode embeddings within scope."""
-        query_vector, _ = await self._provider.generate_embedding(query)
-        vector_literal = _to_pgvector_literal(query_vector)
+        tracer = get_tracer("app.services.episodic")
+        started_at = perf_counter()
+        with tracer.start_as_current_span(
+            "memory.search",
+            attributes={
+                "mode": "semantic",
+                "query_length": len(query),
+                "limit": limit,
+            },
+        ):
+            query_vector, _ = await self._provider.generate_embedding(query)
+            vector_literal = _to_pgvector_literal(query_vector)
 
-        tf_sql, tf_params = build_tag_filter_sql(tag_filters or [], alias="e")
-        tf_clause = f"\n              AND {tf_sql}" if tf_sql else ""
+            tf_sql, tf_params = build_tag_filter_sql(tag_filters or [], alias="e")
+            tf_clause = f"\n              AND {tf_sql}" if tf_sql else ""
 
-        sql = text(
-            f"""
+            sql = text(
+                f"""
             SELECT
                 e.id,
                 e.org_id,
@@ -205,27 +234,25 @@ class EpisodicMemory:
             ORDER BY similarity_score DESC
             LIMIT :limit
             """
-        )
-        result = await self.db.execute(
-            sql,
-            {
-                "org_id": _as_uuid(scope.org_id),
-                "team_id": _as_uuid(scope.team_id),
-                "user_id": _as_uuid(scope.user_id),
-                "agent_id": _as_uuid(scope.agent_id),
-                "score_threshold": score_threshold,
-                "limit": limit,
-                **tf_params,
-            },
-        )
-
-        return [
-            EpisodeSearchResult(
-                episode=_row_to_episode(row),
-                similarity_score=float(row.similarity_score),
             )
-            for row in result
-        ]
+            result = await self.db.execute(
+                sql,
+                {
+                    "org_id": _as_uuid(scope.org_id),
+                    "team_id": _as_uuid(scope.team_id),
+                    "user_id": _as_uuid(scope.user_id),
+                    "agent_id": _as_uuid(scope.agent_id),
+                    "score_threshold": score_threshold,
+                    "limit": limit,
+                    **tf_params,
+                },
+            )
+            return await self._finalize_search(
+                scope=scope,
+                mode="semantic",
+                started_at=started_at,
+                rows=result,
+            )
 
     async def search_hybrid(
         self,
@@ -242,15 +269,25 @@ class EpisodicMemory:
         weights: SearchWeights | None = None,
     ) -> list[EpisodeSearchResult]:
         """Run one-roundtrip semantic + keyword + recency search using a CTE."""
-        resolved_weights = weights or SearchWeights()
-        query_vector, _ = await self._provider.generate_embedding(query)
-        vector_literal = _to_pgvector_literal(query_vector)
+        tracer = get_tracer("app.services.episodic")
+        started_at = perf_counter()
+        with tracer.start_as_current_span(
+            "memory.search",
+            attributes={
+                "mode": "hybrid",
+                "query_length": len(query),
+                "limit": limit,
+            },
+        ):
+            resolved_weights = weights or SearchWeights()
+            query_vector, _ = await self._provider.generate_embedding(query)
+            vector_literal = _to_pgvector_literal(query_vector)
 
-        tf_sql, tf_params = build_tag_filter_sql(tag_filters or [], alias="e")
-        tf_clause = f"\n              AND {tf_sql}" if tf_sql else ""
+            tf_sql, tf_params = build_tag_filter_sql(tag_filters or [], alias="e")
+            tf_clause = f"\n              AND {tf_sql}" if tf_sql else ""
 
-        sql = text(
-            f"""
+            sql = text(
+                f"""
             WITH filtered_episodes AS (
                 SELECT
                     e.id,
@@ -357,42 +394,40 @@ class EpisodicMemory:
             ORDER BY similarity_score DESC, fe.created_at DESC
             LIMIT :limit
             """
-        ).bindparams(
-            bindparam("tags", type_=ARRAY(String())),
-            bindparam("from_time", type_=DateTime(timezone=True)),
-            bindparam("to_time", type_=DateTime(timezone=True)),
-            bindparam("role", type_=String()),
-            bindparam("session_id", type_=UUID(as_uuid=True)),
-        )
-        result = await self.db.execute(
-            sql,
-            {
-                "org_id": _as_uuid(scope.org_id),
-                "team_id": _as_uuid(scope.team_id),
-                "user_id": _as_uuid(scope.user_id),
-                "agent_id": _as_uuid(scope.agent_id),
-                "score_threshold": score_threshold,
-                "tags": tags,
-                "from_time": from_time,
-                "to_time": to_time,
-                "role": role,
-                "session_id": session_id,
-                "limit": limit,
-                "query": query,
-                "semantic_weight": resolved_weights.semantic,
-                "keyword_weight": resolved_weights.keyword,
-                "recency_weight": resolved_weights.recency,
-                **tf_params,
-            },
-        )
-
-        return [
-            EpisodeSearchResult(
-                episode=_row_to_episode(row),
-                similarity_score=float(row.similarity_score),
+            ).bindparams(
+                bindparam("tags", type_=ARRAY(String())),
+                bindparam("from_time", type_=DateTime(timezone=True)),
+                bindparam("to_time", type_=DateTime(timezone=True)),
+                bindparam("role", type_=String()),
+                bindparam("session_id", type_=UUID(as_uuid=True)),
             )
-            for row in result
-        ]
+            result = await self.db.execute(
+                sql,
+                {
+                    "org_id": _as_uuid(scope.org_id),
+                    "team_id": _as_uuid(scope.team_id),
+                    "user_id": _as_uuid(scope.user_id),
+                    "agent_id": _as_uuid(scope.agent_id),
+                    "score_threshold": score_threshold,
+                    "tags": tags,
+                    "from_time": from_time,
+                    "to_time": to_time,
+                    "role": role,
+                    "session_id": session_id,
+                    "limit": limit,
+                    "query": query,
+                    "semantic_weight": resolved_weights.semantic,
+                    "keyword_weight": resolved_weights.keyword,
+                    "recency_weight": resolved_weights.recency,
+                    **tf_params,
+                },
+            )
+            return await self._finalize_search(
+                scope=scope,
+                mode="hybrid",
+                started_at=started_at,
+                rows=result,
+            )
 
     async def search_keyword(
         self,
@@ -407,11 +442,21 @@ class EpisodicMemory:
         limit: int = 10,
     ) -> list[EpisodeSearchResult]:
         """Run full-text keyword search against episode content within scope."""
-        tf_sql, tf_params = build_tag_filter_sql(tag_filters or [], alias="e")
-        tf_clause = f"\n              AND {tf_sql}" if tf_sql else ""
+        tracer = get_tracer("app.services.episodic")
+        started_at = perf_counter()
+        with tracer.start_as_current_span(
+            "memory.search",
+            attributes={
+                "mode": "keyword",
+                "query_length": len(query),
+                "limit": limit,
+            },
+        ):
+            tf_sql, tf_params = build_tag_filter_sql(tag_filters or [], alias="e")
+            tf_clause = f"\n              AND {tf_sql}" if tf_sql else ""
 
-        sql = text(
-            f"""
+            sql = text(
+                f"""
             WITH keyword_query AS (
                 SELECT plainto_tsquery('english', :query) AS ts_query
             )
@@ -457,37 +502,36 @@ class EpisodicMemory:
             ORDER BY similarity_score DESC, e.created_at DESC
             LIMIT :limit
             """
-        ).bindparams(
-            bindparam("tags", type_=ARRAY(String())),
-            bindparam("from_time", type_=DateTime(timezone=True)),
-            bindparam("to_time", type_=DateTime(timezone=True)),
-            bindparam("role", type_=String()),
-            bindparam("session_id", type_=UUID(as_uuid=True)),
-        )
-        result = await self.db.execute(
-            sql,
-            {
-                "org_id": _as_uuid(scope.org_id),
-                "team_id": _as_uuid(scope.team_id),
-                "user_id": _as_uuid(scope.user_id),
-                "agent_id": _as_uuid(scope.agent_id),
-                "query": query,
-                "tags": tags,
-                "from_time": from_time,
-                "to_time": to_time,
-                "role": role,
-                "session_id": session_id,
-                "limit": limit,
-                **tf_params,
-            },
-        )
-        return [
-            EpisodeSearchResult(
-                episode=_row_to_episode(row),
-                similarity_score=float(row.similarity_score),
+            ).bindparams(
+                bindparam("tags", type_=ARRAY(String())),
+                bindparam("from_time", type_=DateTime(timezone=True)),
+                bindparam("to_time", type_=DateTime(timezone=True)),
+                bindparam("role", type_=String()),
+                bindparam("session_id", type_=UUID(as_uuid=True)),
             )
-            for row in result
-        ]
+            result = await self.db.execute(
+                sql,
+                {
+                    "org_id": _as_uuid(scope.org_id),
+                    "team_id": _as_uuid(scope.team_id),
+                    "user_id": _as_uuid(scope.user_id),
+                    "agent_id": _as_uuid(scope.agent_id),
+                    "query": query,
+                    "tags": tags,
+                    "from_time": from_time,
+                    "to_time": to_time,
+                    "role": role,
+                    "session_id": session_id,
+                    "limit": limit,
+                    **tf_params,
+                },
+            )
+            return await self._finalize_search(
+                scope=scope,
+                mode="keyword",
+                started_at=started_at,
+                rows=result,
+            )
 
     async def reconstruct_state_at(
         self,

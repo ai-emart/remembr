@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.celery_app import celery_app
 from app.db.session import AsyncSessionLocal
+from app.observability import get_tracer, record_webhook_delivery
 
 
 class WebhookDeliveryError(Exception):
@@ -52,6 +53,7 @@ async def _deliver_webhook_once(
             delivery.status = "failed"
             delivery.response_body_snippet = "Webhook missing or inactive."
             await db.commit()
+            record_webhook_delivery(delivery.event, "failed")
             return
 
         delivery.attempts += 1
@@ -67,20 +69,25 @@ async def _deliver_webhook_once(
             "X-Remembr-Delivery": str(delivery.id),
             "X-Remembr-Signature": build_webhook_signature(webhook.secret, raw_body),
         }
+        tracer = get_tracer("app.tasks.webhooks")
 
-        try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                response = await client.post(webhook.url, content=raw_body, headers=headers)
-        except httpx.TimeoutException as exc:
-            delivery.response_status_code = None
-            delivery.response_body_snippet = "timeout"
-            await db.commit()
-            raise WebhookDeliveryError("Webhook delivery timed out") from exc
-        except httpx.HTTPError as exc:
-            delivery.response_status_code = None
-            delivery.response_body_snippet = repr(exc)[:500]
-            await db.commit()
-            raise WebhookDeliveryError("Webhook delivery failed") from exc
+        with tracer.start_as_current_span(
+            "webhook.deliver",
+            attributes={"event": delivery.event, "webhook_id": str(webhook.id)},
+        ):
+            try:
+                async with httpx.AsyncClient(timeout=10.0) as client:
+                    response = await client.post(webhook.url, content=raw_body, headers=headers)
+            except httpx.TimeoutException as exc:
+                delivery.response_status_code = None
+                delivery.response_body_snippet = "timeout"
+                await db.commit()
+                raise WebhookDeliveryError("Webhook delivery timed out") from exc
+            except httpx.HTTPError as exc:
+                delivery.response_status_code = None
+                delivery.response_body_snippet = repr(exc)[:500]
+                await db.commit()
+                raise WebhookDeliveryError("Webhook delivery failed") from exc
 
         delivery.response_status_code = response.status_code
         delivery.response_body_snippet = response.text[:500]
@@ -91,6 +98,7 @@ async def _deliver_webhook_once(
             webhook.last_delivery_status = "delivered"
             webhook.failure_count = 0
             await db.commit()
+            record_webhook_delivery(delivery.event, "delivered")
             return
 
         webhook.last_delivery_at = datetime.now(UTC)
@@ -125,6 +133,7 @@ async def _mark_delivery_failed(
                 webhook.active = False
 
         await db.commit()
+        record_webhook_delivery(delivery.event, "failed")
 
 
 @celery_app.task(
