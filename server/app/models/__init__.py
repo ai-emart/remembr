@@ -12,6 +12,8 @@ from app.models.organization import Organization
 from app.models.session import Session
 from app.models.team import Team
 from app.models.user import User
+from app.models.webhook import Webhook
+from app.models.webhook_delivery import WebhookDelivery
 
 __all__ = [
     "Agent",
@@ -24,4 +26,6 @@ __all__ = [
     "Session",
     "Team",
     "User",
+    "Webhook",
+    "WebhookDelivery",
 ]

@@ -231,4 +231,112 @@ describe('RemembrClient', () => {
     const client = new RemembrClient({ apiKey: 'test-key' });
     await expect(client.getSession('missing')).rejects.toBeInstanceOf(NotFoundError);
   });
+
+  test('webhook lifecycle methods map responses correctly', async () => {
+    installSequentialMockFetch([
+      jsonResponse({
+        data: {
+          id: 'wh_1',
+          org_id: 'org_1',
+          url: 'https://example.com/hooks',
+          events: ['memory.stored'],
+          active: true,
+          created_at: '2026-01-01T00:00:00.000Z',
+          updated_at: '2026-01-01T00:00:00.000Z',
+          last_delivery_at: null,
+          last_delivery_status: null,
+          failure_count: 0,
+          secret: 'secret_once',
+        },
+      }),
+      jsonResponse({
+        data: [
+          {
+            id: 'wh_1',
+            org_id: 'org_1',
+            url: 'https://example.com/hooks',
+            events: ['memory.stored'],
+            active: true,
+            created_at: '2026-01-01T00:00:00.000Z',
+            updated_at: '2026-01-01T00:00:00.000Z',
+            last_delivery_at: null,
+            last_delivery_status: null,
+            failure_count: 0,
+          },
+        ],
+      }),
+      jsonResponse({
+        data: {
+          id: 'wh_1',
+          org_id: 'org_1',
+          url: 'https://example.com/hooks-updated',
+          events: ['checkpoint.created'],
+          active: false,
+          created_at: '2026-01-01T00:00:00.000Z',
+          updated_at: '2026-01-02T00:00:00.000Z',
+          last_delivery_at: null,
+          last_delivery_status: null,
+          failure_count: 0,
+        },
+      }),
+      jsonResponse({
+        data: {
+          id: 'wh_1',
+          org_id: 'org_1',
+          url: 'https://example.com/hooks-updated',
+          events: ['checkpoint.created'],
+          active: false,
+          created_at: '2026-01-01T00:00:00.000Z',
+          updated_at: '2026-01-02T00:00:00.000Z',
+          last_delivery_at: null,
+          last_delivery_status: null,
+          failure_count: 0,
+          secret: 'secret_rotated',
+        },
+      }),
+      jsonResponse({
+        data: [
+          {
+            id: 'del_1',
+            webhook_id: 'wh_1',
+            event: 'memory.stored',
+            payload: { episode_id: 'ep_1' },
+            status: 'delivered',
+            attempts: 1,
+            last_attempt_at: '2026-01-02T00:00:00.000Z',
+            response_status_code: 204,
+            response_body_snippet: 'ok',
+            created_at: '2026-01-02T00:00:00.000Z',
+          },
+        ],
+      }),
+      jsonResponse({ data: { delivery_id: 'del_test', event: 'webhook.test' } }),
+      jsonResponse({ data: { deleted: true, webhook_id: 'wh_1' } }),
+    ]);
+
+    const client = new RemembrClient({ apiKey: 'test-key' });
+
+    const created = await client.webhooks.create({
+      url: 'https://example.com/hooks',
+      events: ['memory.stored'],
+    });
+    const listed = await client.webhooks.list();
+    const updated = await client.webhooks.update('wh_1', {
+      url: 'https://example.com/hooks-updated',
+      events: ['checkpoint.created'],
+      active: false,
+    });
+    const rotated = await client.webhooks.rotateSecret('wh_1');
+    const deliveries = await client.webhooks.deliveries('wh_1');
+    const tested = await client.webhooks.test('wh_1');
+    const deleted = await client.webhooks.delete('wh_1');
+
+    expect(created.secret).toBe('secret_once');
+    expect(listed).toHaveLength(1);
+    expect(updated.active).toBe(false);
+    expect(rotated.secret).toBe('secret_rotated');
+    expect(deliveries[0].event).toBe('memory.stored');
+    expect(tested.delivery_id).toBe('del_test');
+    expect(deleted.deleted).toBe(true);
+  });
 });

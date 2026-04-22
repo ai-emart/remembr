@@ -3,7 +3,7 @@ from loguru import logger
 from redis.exceptions import RedisError
 
 from app.api.responses import StandardResponse, success
-from app.api.v1 import api_keys, auth, export, memory
+from app.api.v1 import api_keys, auth, export, memory, webhooks
 from app.config import get_settings
 from app.middleware.context import RequestContext, require_auth
 from app.middleware.rate_limit import limiter
@@ -15,6 +15,7 @@ router.include_router(auth.router)
 router.include_router(api_keys.router)
 router.include_router(memory.router)
 router.include_router(export.router)
+router.include_router(webhooks.router)
 
 
 @router.get("/health", response_model=StandardResponse[dict])

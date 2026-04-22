@@ -1,3 +1,4 @@
+import os
 from functools import lru_cache
 from typing import Literal
 
@@ -200,14 +201,17 @@ def get_test_settings() -> Settings:
     Uses a separate test database to avoid polluting production data.
     Points at the Docker pgvector container on port 5433.
     """
-    _DOCKER_TEST_DB = (
-        "postgresql+asyncpg://remembr:remembr@localhost:5433/remembr_test"
+    database_url = os.getenv(
+        "DATABASE_URL",
+        "postgresql+asyncpg://postgres:postgres@localhost:5433/remembr_test",
     )
+    if database_url.startswith("postgresql://"):
+        database_url = database_url.replace("postgresql://", "postgresql+asyncpg://", 1)
 
     settings = get_settings()
 
     return Settings(
-        database_url=SecretStr(_DOCKER_TEST_DB),
+        database_url=SecretStr(database_url),
         redis_url=settings.redis_url,
         secret_key=settings.secret_key,
         environment="local",

@@ -24,7 +24,7 @@ class TagFilter(BaseModel):
     op: Literal["eq", "ne", "gt", "gte", "lt", "lte", "exists", "prefix"] = "eq"
 
     @model_validator(mode="after")
-    def _validate(self) -> "TagFilter":
+    def _validate(self) -> TagFilter:
         if self.op in ("gt", "gte", "lt", "lte"):
             if self.value is None:
                 raise ValueError(f"op={self.op!r} requires a numeric value (key={self.key!r})")
@@ -32,7 +32,8 @@ class TagFilter(BaseModel):
                 float(self.value)
             except ValueError:
                 raise ValueError(
-                    f"op={self.op!r} requires a numeric value; got {self.value!r} for key={self.key!r}"
+                    f"op={self.op!r} requires a numeric value; "
+                    f"got {self.value!r} for key={self.key!r}"
                 )
         if self.op == "prefix" and self.value is None:
             raise ValueError(f"op='prefix' requires a value (key={self.key!r})")
@@ -51,7 +52,7 @@ class SearchWeights(BaseModel):
     recency: float = Field(default=0.1, ge=0.0, le=1.0)
 
     @model_validator(mode="after")
-    def _validate_total(self) -> "SearchWeights":
+    def _validate_total(self) -> SearchWeights:
         total = self.semantic + self.keyword + self.recency
         if abs(total - 1.0) > 1e-9:
             raise ValueError("weights.semantic + weights.keyword + weights.recency must sum to 1.0")
@@ -96,3 +97,33 @@ class CheckpointInfo(BaseModel):
     checkpoint_id: str
     created_at: datetime
     message_count: int
+
+
+class Webhook(BaseModel):
+    id: str
+    org_id: str
+    url: str
+    events: list[str]
+    active: bool
+    created_at: datetime
+    updated_at: datetime
+    last_delivery_at: datetime | None = None
+    last_delivery_status: str | None = None
+    failure_count: int
+
+
+class WebhookSecret(Webhook):
+    secret: str
+
+
+class WebhookDelivery(BaseModel):
+    id: str
+    webhook_id: str
+    event: str
+    payload: dict[str, Any]
+    status: str
+    attempts: int
+    last_attempt_at: datetime | None = None
+    response_status_code: int | None = None
+    response_body_snippet: str | None = None
+    created_at: datetime

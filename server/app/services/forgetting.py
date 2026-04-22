@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.db.session import AsyncSessionLocal
 from app.models import AuditLog, Embedding, Episode, Session
 from app.services.cache import CacheService, make_key
+from app.services.events import emit_event_safely
 from app.services.scoping import MemoryScope
 
 SOFT_DELETE_GRACE_DAYS = 30
@@ -135,6 +136,17 @@ class ForgettingService:
                 org_id=filters["org_id"],
                 details={"restorable_until": restorable_until.isoformat()},
             )
+            await emit_event_safely(
+                event_name="memory.deleted",
+                payload={
+                    "delete_mode": "soft",
+                    "scope": "episode",
+                    "episode_id": str(episode_id),
+                    "org_id": str(filters["org_id"]),
+                    "restorable_until": restorable_until.isoformat(),
+                },
+                org_id=filters["org_id"],
+            )
             return SoftDeleteResult(deleted=True, soft=True, restorable_until=restorable_until)
         except Exception as exc:
             await self._write_audit(
@@ -222,6 +234,18 @@ class ForgettingService:
                     "deleted_count": deleted_count,
                     "restorable_until": restorable_until.isoformat(),
                 },
+            )
+            await emit_event_safely(
+                event_name="memory.deleted",
+                payload={
+                    "delete_mode": "soft",
+                    "scope": "session",
+                    "session_id": str(session_id),
+                    "org_id": str(filters["org_id"]),
+                    "deleted_count": deleted_count,
+                    "restorable_until": restorable_until.isoformat(),
+                },
+                org_id=filters["org_id"],
             )
             return deleted_count, restorable_until
         except Exception as exc:
@@ -317,6 +341,19 @@ class ForgettingService:
                     "restorable_until": restorable_until.isoformat(),
                 },
             )
+            await emit_event_safely(
+                event_name="memory.deleted",
+                payload={
+                    "delete_mode": "soft",
+                    "scope": "user",
+                    "user_id": str(user_id),
+                    "org_id": str(org_id),
+                    "deleted_episodes": deleted_episodes,
+                    "deleted_sessions": deleted_sessions,
+                    "restorable_until": restorable_until.isoformat(),
+                },
+                org_id=org_id,
+            )
 
             return UserDeleteResult(
                 deleted_episodes=deleted_episodes,
@@ -384,6 +421,16 @@ class ForgettingService:
                 actor_user_id=actor_user_id,
                 org_id=filters["org_id"],
                 details={"actor": str(actor_user_id)},
+            )
+            await emit_event_safely(
+                event_name="memory.deleted",
+                payload={
+                    "delete_mode": "hard",
+                    "scope": "episode",
+                    "episode_id": str(episode_id),
+                    "org_id": str(filters["org_id"]),
+                },
+                org_id=filters["org_id"],
             )
             return True
         except Exception as exc:
@@ -460,6 +507,17 @@ class ForgettingService:
                 actor_user_id=actor_user_id,
                 org_id=filters["org_id"],
                 details={"deleted_count": deleted_count, "actor": str(actor_user_id)},
+            )
+            await emit_event_safely(
+                event_name="memory.deleted",
+                payload={
+                    "delete_mode": "hard",
+                    "scope": "session",
+                    "session_id": str(session_id),
+                    "org_id": str(filters["org_id"]),
+                    "deleted_count": deleted_count,
+                },
+                org_id=filters["org_id"],
             )
             return deleted_count
         except Exception as exc:
@@ -566,6 +624,18 @@ class ForgettingService:
                     "deleted_sessions": deleted_sessions,
                     "actor": str(actor_user_id),
                 },
+            )
+            await emit_event_safely(
+                event_name="memory.deleted",
+                payload={
+                    "delete_mode": "hard",
+                    "scope": "user",
+                    "user_id": str(user_id),
+                    "org_id": str(org_id),
+                    "deleted_episodes": deleted_episodes,
+                    "deleted_sessions": deleted_sessions,
+                },
+                org_id=org_id,
             )
             return UserDeleteResult(
                 deleted_episodes=deleted_episodes,

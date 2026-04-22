@@ -30,6 +30,8 @@ async def _do_generate_embedding(episode_id: str) -> None:
     from app.services.embeddings import get_embedding_provider
 
     provider = get_embedding_provider()
+    event_payload: dict | None = None
+    event_org_id = None
 
     async with AsyncSessionLocal() as db:
         episode = await db.get(Episode, episode_id)
@@ -64,9 +66,28 @@ async def _do_generate_embedding(episode_id: str) -> None:
         episode.embedding_status = "ready"
         episode.embedding_generated_at = datetime.now(UTC)
         episode.embedding_error = None
+        event_org_id = episode.org_id
+        event_payload = {
+            "episode_id": str(episode.id),
+            "org_id": str(episode.org_id),
+            "embedding_status": episode.embedding_status,
+            "embedding_model": provider.model,
+            "embedding_dimensions": dimensions,
+            "content": episode.content,
+            "generated_at": episode.embedding_generated_at.isoformat(),
+        }
 
         await db.commit()
         logger.debug("Embedding stored", episode_id=episode_id, dims=dimensions)
+
+    if event_payload is not None and event_org_id is not None:
+        from app.services.events import emit_event_safely
+
+        await emit_event_safely(
+            event_name="embedding.ready",
+            payload=event_payload,
+            org_id=event_org_id,
+        )
 
 
 async def _mark_failed(episode_id: str, error_msg: str) -> None:

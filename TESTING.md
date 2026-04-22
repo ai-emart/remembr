@@ -28,12 +28,12 @@ docker-compose -f docker-compose.test.yml up -d
 Or manually:
 
 ```bash
-# PostgreSQL
-docker run -d -p 5432:5432 \
+# PostgreSQL + pgvector
+docker run -d -p 5433:5432 \
   -e POSTGRES_USER=postgres \
   -e POSTGRES_PASSWORD=postgres \
   -e POSTGRES_DB=remembr_test \
-  postgres:15
+  pgvector/pgvector:pg16
 
 # Redis
 docker run -d -p 6379:6379 redis:7
@@ -42,7 +42,7 @@ docker run -d -p 6379:6379 redis:7
 ### Set Environment Variables
 
 ```bash
-export DATABASE_URL=postgresql://postgres:postgres@localhost:5432/remembr_test
+export DATABASE_URL=postgresql://postgres:postgres@localhost:5433/remembr_test
 export REDIS_URL=redis://localhost:6379
 export SECRET_KEY=test-secret-key
 export JINA_API_KEY=test-jina-key
@@ -284,7 +284,7 @@ docker ps | grep postgres
 Test connection:
 
 ```bash
-psql postgresql://postgres:postgres@localhost:5432/remembr_test -c "SELECT 1"
+psql postgresql://postgres:postgres@localhost:5433/remembr_test -c "SELECT 1"
 ```
 
 ### Tests Fail with Redis Connection Error

@@ -10,6 +10,9 @@ from .models import (
     SearchWeights,
     Session,
     TagFilter,
+    Webhook,
+    WebhookDelivery,
+    WebhookSecret,
 )
 
 __all__ = [
@@ -26,4 +29,7 @@ __all__ = [
     "CheckpointInfo",
     "TagFilter",
     "SearchWeights",
+    "Webhook",
+    "WebhookSecret",
+    "WebhookDelivery",
 ]

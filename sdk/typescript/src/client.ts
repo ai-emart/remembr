@@ -2,6 +2,7 @@ import { AuthenticationError, ServerError } from './errors';
 import { RemembrHttp } from './http';
 import {
   CheckpointInfo,
+  CreateWebhookParams,
   Episode,
   ExportParams,
   IdempotencyOptions,
@@ -13,6 +14,10 @@ import {
   Session,
   StoreMemoryParams,
   TagFilter,
+  UpdateWebhookParams,
+  Webhook,
+  WebhookDelivery,
+  WebhookSecret,
 } from './types';
 
 const VALID_SEARCH_MODES = new Set(['semantic', 'keyword', 'hybrid']);
@@ -34,9 +39,74 @@ interface ForgetUserResponse {
   deletedSessions: number;
 }
 
+class WebhookAPI {
+  constructor(
+    private readonly http: RemembrHttp,
+    private readonly requireNonEmpty: (value: string, paramName: string) => void
+  ) {}
+
+  async create(params: CreateWebhookParams): Promise<WebhookSecret> {
+    this.requireNonEmpty(params.url, 'url');
+    if (!params.events.length) {
+      throw new Error('events must not be empty');
+    }
+    return this.http.request<WebhookSecret>('POST', '/webhooks', {
+      body: { url: params.url, events: params.events, active: params.active ?? true },
+    });
+  }
+
+  async list(): Promise<Webhook[]> {
+    return this.http.request<Webhook[]>('GET', '/webhooks');
+  }
+
+  async get(webhookId: string): Promise<Webhook> {
+    this.requireNonEmpty(webhookId, 'webhookId');
+    return this.http.request<Webhook>('GET', `/webhooks/${webhookId}`);
+  }
+
+  async update(webhookId: string, params: UpdateWebhookParams): Promise<Webhook> {
+    this.requireNonEmpty(webhookId, 'webhookId');
+    if (params.url !== undefined) {
+      this.requireNonEmpty(params.url, 'url');
+    }
+    if (params.events !== undefined && params.events.length === 0) {
+      throw new Error('events must not be empty');
+    }
+    return this.http.request<Webhook>('PATCH', `/webhooks/${webhookId}`, {
+      body: { ...params },
+    });
+  }
+
+  async delete(webhookId: string): Promise<{ deleted: boolean; webhook_id: string }> {
+    this.requireNonEmpty(webhookId, 'webhookId');
+    return this.http.request<{ deleted: boolean; webhook_id: string }>('DELETE', `/webhooks/${webhookId}`);
+  }
+
+  async rotateSecret(webhookId: string): Promise<WebhookSecret> {
+    this.requireNonEmpty(webhookId, 'webhookId');
+    return this.http.request<WebhookSecret>('POST', `/webhooks/${webhookId}/rotate-secret`);
+  }
+
+  async deliveries(webhookId: string, limit = 20): Promise<WebhookDelivery[]> {
+    this.requireNonEmpty(webhookId, 'webhookId');
+    if (limit < 1) {
+      throw new Error('limit must be greater than 0');
+    }
+    return this.http.request<WebhookDelivery[]>('GET', `/webhooks/${webhookId}/deliveries`, {
+      params: { limit },
+    });
+  }
+
+  async test(webhookId: string): Promise<Record<string, unknown>> {
+    this.requireNonEmpty(webhookId, 'webhookId');
+    return this.http.request<Record<string, unknown>>('POST', `/webhooks/${webhookId}/test`);
+  }
+}
+
 /** Remembr API client exposing session, memory, checkpoint, and forget operations. */
 export class RemembrClient {
   private readonly http: RemembrHttp;
+  readonly webhooks: WebhookAPI;
 
   constructor(config: RemembrConfig = {}) {
     const apiKey = config.apiKey ?? this.getApiKeyFromEnv();
@@ -47,6 +117,7 @@ export class RemembrClient {
     }
 
     this.http = new RemembrHttp({ ...config, apiKey });
+    this.webhooks = new WebhookAPI(this.http, this.requireNonEmpty.bind(this));
   }
 
   /**

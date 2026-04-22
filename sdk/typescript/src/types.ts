@@ -44,6 +44,36 @@ export interface CheckpointInfo {
   message_count: number;
 }
 
+export interface Webhook {
+  id: string;
+  org_id: string;
+  url: string;
+  events: string[];
+  active: boolean;
+  created_at: string;
+  updated_at: string;
+  last_delivery_at?: string | null;
+  last_delivery_status?: string | null;
+  failure_count: number;
+}
+
+export interface WebhookSecret extends Webhook {
+  secret: string;
+}
+
+export interface WebhookDelivery {
+  id: string;
+  webhook_id: string;
+  event: string;
+  payload: Record<string, unknown>;
+  status: string;
+  attempts: number;
+  last_attempt_at?: string | null;
+  response_status_code?: number | null;
+  response_body_snippet?: string | null;
+  created_at: string;
+}
+
 export interface RemembrConfig {
   apiKey?: string;
   baseUrl?: string;
@@ -185,4 +215,15 @@ export interface TagFilter {
 export interface IdempotencyOptions {
   /** Optional idempotency key (≤ 255 chars). Same key → same response for 24 h. */
   idempotencyKey?: string;
+}
+export interface CreateWebhookParams {
+  url: string;
+  events: string[];
+  active?: boolean;
+}
+
+export interface UpdateWebhookParams {
+  url?: string;
+  events?: string[];
+  active?: boolean;
 }

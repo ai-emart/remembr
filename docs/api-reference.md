@@ -563,6 +563,177 @@ Delete all sessions + episodes for a user (org-level authority required).
 curl -X DELETE "$BASE_URL/memory/user/$USER_ID" -H "Authorization: Bearer $API_KEY_OR_TOKEN"
 ```
 
+---
+
+## Webhooks
+
+Webhook deliveries let you subscribe an org-owned HTTPS endpoint to core Remembr
+events. Deliveries are signed with an HMAC SHA-256 signature and retried with
+exponential backoff.
+
+Supported events:
+- `memory.stored`
+- `embedding.ready`
+- `session.created`
+- `memory.deleted`
+- `checkpoint.created`
+
+Delivery headers:
+- `X-Remembr-Event`: event name
+- `X-Remembr-Delivery`: delivery UUID
+- `X-Remembr-Signature`: `sha256=<hex_hmac(secret, raw_body)>`
+
+Retry policy:
+- Timeout: `10s`
+- Retry backoff: exponential
+- Maximum retries: `5`
+- After `20` consecutive failed deliveries, the webhook is auto-deactivated
+
+### POST `/webhooks`
+Register a webhook for the authenticated org.
+
+**Auth required:** JWT/API key
+
+**Request body**
+```json
+{
+  "url": "https://example.com/remembr-webhook",
+  "events": ["memory.stored", "embedding.ready"],
+  "active": true
+}
+```
+
+**Response body (`201`)**
+```json
+{
+  "data": {
+    "id": "uuid",
+    "org_id": "uuid",
+    "url": "https://example.com/remembr-webhook",
+    "events": ["memory.stored", "embedding.ready"],
+    "active": true,
+    "created_at": "...",
+    "updated_at": "...",
+    "last_delivery_at": null,
+    "last_delivery_status": null,
+    "failure_count": 0,
+    "secret": "shown-once-only"
+  }
+}
+```
+
+The `secret` is only returned on creation and secret rotation. Store it securely.
+
+```bash
+curl -X POST "$BASE_URL/webhooks" \
+  -H "Authorization: Bearer $API_KEY_OR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "url":"https://example.com/remembr-webhook",
+    "events":["memory.stored","embedding.ready"],
+    "active":true
+  }'
+```
+
+### GET `/webhooks`
+List webhooks for the authenticated org.
+
+**Auth required:** JWT/API key
+
+```bash
+curl "$BASE_URL/webhooks" -H "Authorization: Bearer $API_KEY_OR_TOKEN"
+```
+
+### GET `/webhooks/{webhook_id}`
+Fetch one webhook by ID.
+
+**Auth required:** JWT/API key
+
+```bash
+curl "$BASE_URL/webhooks/$WEBHOOK_ID" -H "Authorization: Bearer $API_KEY_OR_TOKEN"
+```
+
+### PATCH `/webhooks/{webhook_id}`
+Update the webhook URL, subscribed events, or active flag.
+
+**Auth required:** JWT/API key
+
+```bash
+curl -X PATCH "$BASE_URL/webhooks/$WEBHOOK_ID" \
+  -H "Authorization: Bearer $API_KEY_OR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"events":["checkpoint.created"],"active":false}'
+```
+
+### DELETE `/webhooks/{webhook_id}`
+Soft-delete a webhook. Deleted webhooks are no longer used for delivery.
+
+**Auth required:** JWT/API key
+
+```bash
+curl -X DELETE "$BASE_URL/webhooks/$WEBHOOK_ID" \
+  -H "Authorization: Bearer $API_KEY_OR_TOKEN"
+```
+
+### POST `/webhooks/{webhook_id}/rotate-secret`
+Generate a new signing secret. The new secret is returned once and immediately
+invalidates the old secret.
+
+**Auth required:** JWT/API key
+
+```bash
+curl -X POST "$BASE_URL/webhooks/$WEBHOOK_ID/rotate-secret" \
+  -H "Authorization: Bearer $API_KEY_OR_TOKEN"
+```
+
+### GET `/webhooks/{webhook_id}/deliveries`
+List recent delivery attempts for a webhook.
+
+**Auth required:** JWT/API key
+
+**Query params:** `limit` (1-100, default `20`)
+
+```bash
+curl "$BASE_URL/webhooks/$WEBHOOK_ID/deliveries?limit=20" \
+  -H "Authorization: Bearer $API_KEY_OR_TOKEN"
+```
+
+### POST `/webhooks/{webhook_id}/test`
+Queue a synthetic `webhook.test` delivery so you can verify reachability and
+signature handling without waiting for a real product event.
+
+**Auth required:** JWT/API key
+
+```bash
+curl -X POST "$BASE_URL/webhooks/$WEBHOOK_ID/test" \
+  -H "Authorization: Bearer $API_KEY_OR_TOKEN"
+```
+
+### Signature Verification
+
+Python:
+```python
+import hashlib
+import hmac
+
+def verify_remembr_signature(secret: str, raw_body: bytes, header_value: str) -> bool:
+    expected = hmac.new(secret.encode("utf-8"), raw_body, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(header_value, f"sha256={expected}")
+```
+
+Node:
+```js
+import crypto from 'node:crypto';
+
+export function verifyRemembrSignature(secret, rawBody, headerValue) {
+  const expected = crypto.createHmac('sha256', secret).update(rawBody).digest('hex');
+  return crypto.timingSafeEqual(
+    Buffer.from(headerValue),
+    Buffer.from(`sha256=${expected}`)
+  );
+}
+```
+
 ### POST `/api-keys`
 Create API key.
 

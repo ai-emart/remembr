@@ -4,18 +4,124 @@ from __future__ import annotations
 
 import asyncio
 import os
+from collections.abc import AsyncIterator
 from datetime import datetime
-from typing import Any, AsyncIterator
+from typing import Any
 
 import httpx
-from tenacity import AsyncRetrying, retry_if_exception_type, stop_after_attempt, wait_exponential
+from tenacity import (
+    AsyncRetrying,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential,
+)
 
-from .exceptions import AuthenticationError, NotFoundError, RateLimitError, RemembrError, ServerError
-from .models import CheckpointInfo, Episode, MemoryQueryResult, SearchWeights, Session, TagFilter
+from .exceptions import (
+    AuthenticationError,
+    NotFoundError,
+    RateLimitError,
+    RemembrError,
+    ServerError,
+)
+from .models import (
+    CheckpointInfo,
+    Episode,
+    MemoryQueryResult,
+    SearchWeights,
+    Session,
+    TagFilter,
+    Webhook,
+    WebhookDelivery,
+    WebhookSecret,
+)
 
 
 class _RetryableServerError(ServerError):
     """Internal exception used to trigger retries for transient failures."""
+
+
+class WebhookAPI:
+    """Webhook management helper exposed as ``client.webhooks``."""
+
+    def __init__(self, client: RemembrClient) -> None:
+        self._client = client
+
+    async def create(
+        self,
+        url: str,
+        events: list[str],
+        active: bool = True,
+    ) -> WebhookSecret:
+        self._client._require_non_empty(url, "url")
+        if not events:
+            raise ValueError("events must not be empty")
+        data = await self._client.arequest(
+            "POST",
+            "/webhooks",
+            json={"url": url, "events": events, "active": active},
+        )
+        return WebhookSecret.model_validate(data)
+
+    async def list(self) -> list[Webhook]:
+        data = await self._client.arequest("GET", "/webhooks")
+        webhooks = data if isinstance(data, list) else []
+        return [Webhook.model_validate(item) for item in webhooks if isinstance(item, dict)]
+
+    async def get(self, webhook_id: str) -> Webhook:
+        self._client._require_non_empty(webhook_id, "webhook_id")
+        data = await self._client.arequest("GET", f"/webhooks/{webhook_id}")
+        return Webhook.model_validate(data)
+
+    async def update(
+        self,
+        webhook_id: str,
+        *,
+        url: str | None = None,
+        events: list[str] | None = None,
+        active: bool | None = None,
+    ) -> Webhook:
+        self._client._require_non_empty(webhook_id, "webhook_id")
+        payload: dict[str, Any] = {}
+        if url is not None:
+            self._client._require_non_empty(url, "url")
+            payload["url"] = url
+        if events is not None:
+            if not events:
+                raise ValueError("events must not be empty")
+            payload["events"] = events
+        if active is not None:
+            payload["active"] = active
+        data = await self._client.arequest("PATCH", f"/webhooks/{webhook_id}", json=payload)
+        return Webhook.model_validate(data)
+
+    async def delete(self, webhook_id: str) -> dict[str, Any]:
+        self._client._require_non_empty(webhook_id, "webhook_id")
+        return await self._client.arequest("DELETE", f"/webhooks/{webhook_id}")
+
+    async def rotate_secret(self, webhook_id: str) -> WebhookSecret:
+        self._client._require_non_empty(webhook_id, "webhook_id")
+        data = await self._client.arequest("POST", f"/webhooks/{webhook_id}/rotate-secret")
+        return WebhookSecret.model_validate(data)
+
+    async def deliveries(self, webhook_id: str, limit: int = 20) -> list[WebhookDelivery]:
+        self._client._require_non_empty(webhook_id, "webhook_id")
+        if limit < 1:
+            raise ValueError("limit must be greater than 0")
+        data = await self._client.arequest(
+            "GET",
+            f"/webhooks/{webhook_id}/deliveries",
+            params={"limit": limit},
+        )
+        deliveries = data if isinstance(data, list) else []
+        return [
+            WebhookDelivery.model_validate(item)
+            for item in deliveries
+            if isinstance(item, dict)
+        ]
+
+    async def test(self, webhook_id: str) -> dict[str, Any]:
+        self._client._require_non_empty(webhook_id, "webhook_id")
+        return await self._client.arequest("POST", f"/webhooks/{webhook_id}/test")
 
 
 class RemembrClient:
@@ -39,8 +145,9 @@ class RemembrClient:
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
         self._client: httpx.AsyncClient | None = None
+        self.webhooks = WebhookAPI(self)
 
-    async def __aenter__(self) -> "RemembrClient":
+    async def __aenter__(self) -> RemembrClient:
         await self._ensure_client()
         return self
 
@@ -190,7 +297,12 @@ class RemembrClient:
             A :class:`~remembr.models.Session` object describing the newly created session.
         """
         payload = {"metadata": metadata or {}}
-        data = await self.arequest("POST", "/sessions", json=payload, idempotency_key=idempotency_key)
+        data = await self.arequest(
+            "POST",
+            "/sessions",
+            json=payload,
+            idempotency_key=idempotency_key,
+        )
         return Session.model_validate(data)
 
     async def get_session(self, session_id: str) -> Session:
@@ -342,7 +454,9 @@ class RemembrClient:
         resolved_weights: SearchWeights | None = None
         if weights is not None:
             resolved_weights = (
-                weights if isinstance(weights, SearchWeights) else SearchWeights.model_validate(weights)
+                weights
+                if isinstance(weights, SearchWeights)
+                else SearchWeights.model_validate(weights)
             )
 
         payload: dict[str, Any] = {
@@ -379,7 +493,11 @@ class RemembrClient:
         if limit < 1:
             raise ValueError("limit must be greater than 0")
 
-        data = await self.arequest("GET", f"/sessions/{session_id}/history", params={"limit": limit})
+        data = await self.arequest(
+            "GET",
+            f"/sessions/{session_id}/history",
+            params={"limit": limit},
+        )
         episodes = data.get("episodes") if isinstance(data, dict) else None
         if not isinstance(episodes, list):
             raise ServerError("Invalid session history payload returned by Remembr API.")
@@ -430,7 +548,11 @@ class RemembrClient:
         checkpoints = data.get("checkpoints") if isinstance(data, dict) else None
         if not isinstance(checkpoints, list):
             raise ServerError("Invalid checkpoint list payload returned by Remembr API.")
-        return [CheckpointInfo.model_validate(item) for item in checkpoints if isinstance(item, dict)]
+        return [
+            CheckpointInfo.model_validate(item)
+            for item in checkpoints
+            if isinstance(item, dict)
+        ]
 
     async def forget_episode(self, episode_id: str) -> dict[str, Any]:
         """Delete a single memory episode.
@@ -479,7 +601,8 @@ class RemembrClient:
         """Export all episodes for the authenticated scope.
 
         Args:
-            format: ``"json"`` (default) returns an ``AsyncIterator[dict]``; ``"csv"`` returns ``bytes``.
+            format: ``"json"`` (default) returns an
+                ``AsyncIterator[dict]``; ``"csv"`` returns ``bytes``.
             from_date: Optional lower bound for ``created_at``.
             to_date: Optional upper bound for ``created_at``.
             session_id: Limit to a single session.
@@ -586,9 +709,15 @@ class RemembrClient:
                 if isinstance(error, dict):
                     message = str(error.get("message", message))
                     code = error.get("code") if isinstance(error.get("code"), str) else None
-                    details = error.get("details") if isinstance(error.get("details"), dict) else None
+                    details = (
+                        error.get("details")
+                        if isinstance(error.get("details"), dict)
+                        else None
+                    )
                     request_id = (
-                        error.get("request_id") if isinstance(error.get("request_id"), str) else None
+                        error.get("request_id")
+                        if isinstance(error.get("request_id"), str)
+                        else None
                     )
         except ValueError:
             pass

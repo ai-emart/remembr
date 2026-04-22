@@ -27,6 +27,7 @@ from app.middleware.rate_limit import get_search_limit, limiter
 from app.models import Episode, Session
 from app.services.cache import CacheService
 from app.services.episodic import EpisodicMemory
+from app.services.events import emit_event_safely
 from app.services.forgetting import ForgettingService
 from app.services.scoping import MemoryScope, ScopeResolver
 from app.services.search_config import DEFAULT_SEARCH_MODE, SearchMode, SearchWeights
@@ -513,6 +514,17 @@ async def create_session(
     await db.refresh(session)
     await db.commit()
 
+    await emit_event_safely(
+        event_name="session.created",
+        payload={
+            "session_id": str(session.id),
+            "org_id": str(session.org_id),
+            "metadata": session.metadata_ or {},
+            "created_at": session.created_at.isoformat(),
+        },
+        org_id=session.org_id,
+    )
+
     return success(
         CreateSessionResponse(
             request_id=ctx.request_id,
@@ -567,6 +579,20 @@ async def log_memory(
 
     await db.commit()
 
+    await emit_event_safely(
+        event_name="memory.stored",
+        payload={
+            "episode_id": str(episode.id),
+            "session_id": str(episode.session_id) if episode.session_id is not None else None,
+            "org_id": str(episode.org_id),
+            "role": episode.role,
+            "content": episode.content,
+            "tags": episode.tags or [],
+            "created_at": episode.created_at.isoformat(),
+        },
+        org_id=episode.org_id,
+    )
+
     return success(
         LogMemoryResponse(
             request_id=ctx.request_id,
@@ -603,6 +629,18 @@ async def create_session_checkpoint(
         raise NotFoundError("Checkpoint not found", details={"code": CHECKPOINT_NOT_FOUND})
 
     await db.commit()
+
+    await emit_event_safely(
+        event_name="checkpoint.created",
+        payload={
+            "checkpoint_id": str(checkpoint_id),
+            "session_id": str(session_id),
+            "org_id": str(scope.org_id),
+            "message_count": int((checkpoint_episode.metadata_ or {}).get("message_count", 0)),
+            "created_at": checkpoint_episode.created_at.isoformat(),
+        },
+        org_id=UUID(scope.org_id),
+    )
 
     return success(
         SessionCheckpointResponse(
