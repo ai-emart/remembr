@@ -11,10 +11,6 @@ import pytest
 from app.services.scoping import MemoryScope
 from app.services.short_term import SessionMessage, ShortTermMemory
 
-# Skip compression test that has priority scoring issues
-pytestmark_compression = pytest.mark.skip(reason="Compression test has priority scoring logic issue")
-
-
 class _FakePipeline:
     def __init__(self, redis_store: dict[str, str]) -> None:
         self._redis_store = redis_store
@@ -117,7 +113,6 @@ async def test_priority_scoring_is_deterministic() -> None:
     assert score_1 == score_2
 
 
-@pytestmark_compression
 @pytest.mark.asyncio
 async def test_compression_removes_low_priority_messages() -> None:
     """Compression should drop lowest priority entries when token budget is exceeded."""
@@ -180,6 +175,7 @@ async def test_compression_removes_low_priority_messages() -> None:
     await memory.add_message("session-1", assistant_msg)
     cache.get = AsyncMock(return_value=cache.set.call_args.args[1])
     await memory.add_message("session-1", user_msg)
+    cache.get = AsyncMock(return_value=cache.set.call_args.args[1])
 
     context = await memory.get_context("session-1")
 

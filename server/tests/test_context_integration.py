@@ -11,8 +11,7 @@ from app.models.user import User
 from app.services.api_keys import create_api_key
 from app.services.auth import create_access_token, hash_password
 
-# Skip integration tests that are getting 404s - routing issue
-pytestmark = pytest.mark.skip(reason="Context integration tests getting 404 - needs routing investigation")
+pytestmark = pytest.mark.integration
 
 
 @pytest_asyncio.fixture
@@ -58,17 +57,18 @@ class TestContextIntegration:
 
         # Call /me endpoint
         response = await client.get(
-            "/v1/me",
+            "/api/v1/me",
             headers={"Authorization": f"Bearer {token}"},
         )
 
         assert response.status_code == 200
         data = response.json()
+        payload = data["data"]
 
-        assert data["org_id"] == str(test_user.org_id)
-        assert data["user_id"] == str(test_user.id)
-        assert data["agent_id"] is None
-        assert data["auth_method"] == "jwt"
+        assert payload["org_id"] == str(test_user.org_id)
+        assert payload["user_id"] == str(test_user.id)
+        assert payload["agent_id"] is None
+        assert payload["auth_method"] == "jwt"
         assert "request_id" in data
 
     async def test_me_endpoint_with_jwt_and_agent(self, client: AsyncClient, test_user):
@@ -85,12 +85,12 @@ class TestContextIntegration:
         )
 
         response = await client.get(
-            "/v1/me",
+            "/api/v1/me",
             headers={"Authorization": f"Bearer {token}"},
         )
 
         assert response.status_code == 200
-        data = response.json()
+        data = response.json()["data"]
 
         assert data["agent_id"] == str(agent_id)
 
@@ -113,12 +113,12 @@ class TestContextIntegration:
 
         # Call /me endpoint
         response = await client.get(
-            "/v1/me",
+            "/api/v1/me",
             headers={"X-API-Key": raw_key},
         )
 
         assert response.status_code == 200
-        data = response.json()
+        data = response.json()["data"]
 
         assert data["org_id"] == str(test_org.id)
         assert data["user_id"] == str(test_user.id)
@@ -126,7 +126,7 @@ class TestContextIntegration:
 
     async def test_me_endpoint_without_auth(self, client: AsyncClient):
         """Test /me endpoint without authentication."""
-        response = await client.get("/v1/me")
+        response = await client.get("/api/v1/me")
 
         assert response.status_code == 401
         data = response.json()
@@ -137,7 +137,7 @@ class TestContextIntegration:
     async def test_me_endpoint_with_invalid_jwt(self, client: AsyncClient):
         """Test /me endpoint with invalid JWT."""
         response = await client.get(
-            "/v1/me",
+            "/api/v1/me",
             headers={"Authorization": "Bearer invalid.jwt.token"},
         )
 
@@ -146,7 +146,7 @@ class TestContextIntegration:
     async def test_me_endpoint_with_invalid_api_key(self, client: AsyncClient):
         """Test /me endpoint with invalid API key."""
         response = await client.get(
-            "/v1/me",
+            "/api/v1/me",
             headers={"X-API-Key": "rmbr_invalid_key_12345678901234"},
         )
 
@@ -154,10 +154,10 @@ class TestContextIntegration:
 
     async def test_health_endpoint_no_auth_required(self, client: AsyncClient):
         """Test health endpoint doesn't require authentication."""
-        response = await client.get("/v1/health")
+        response = await client.get("/api/v1/health")
 
         assert response.status_code == 200
-        data = response.json()
+        data = response.json()["data"]
 
         assert data["status"] == "ok"
         assert "version" in data
@@ -172,7 +172,7 @@ class TestContextIntegration:
         )
 
         response = await client.get(
-            "/v1/me",
+            "/api/v1/me",
             headers={"Authorization": f"Bearer {token}"},
         )
 
@@ -202,7 +202,7 @@ class TestContextIntegration:
 
         # Provide both invalid JWT and valid API key
         response = await client.get(
-            "/v1/me",
+            "/api/v1/me",
             headers={
                 "Authorization": "Bearer invalid.jwt.token",
                 "X-API-Key": raw_key,
@@ -210,7 +210,7 @@ class TestContextIntegration:
         )
 
         assert response.status_code == 200
-        data = response.json()
+        data = response.json()["data"]
 
         # Should authenticate with API key
         assert data["auth_method"] == "api_key"

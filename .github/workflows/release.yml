@@ -1,0 +1,298 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+jobs:
+  test-server:
+    name: test-server (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - macos-latest
+          - windows-latest
+    env:
+      DATABASE_URL: postgresql://remembr:remembr@localhost:5432/remembr
+      TEST_DATABASE_URL: postgresql://remembr:remembr@localhost:5432/remembr
+      REDIS_URL: redis://localhost:6379/0
+      SECRET_KEY: test-secret-key
+      JINA_API_KEY: test-jina-key
+      ENVIRONMENT: local
+      LOG_LEVEL: DEBUG
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: server/pyproject.toml
+
+      - name: Install server dependencies
+        working-directory: server
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+
+      - name: Start PostgreSQL, Redis, and PgBouncer
+        if: runner.os == 'Linux'
+        run: docker compose up -d postgres redis pgbouncer
+
+      - name: Run full server test suite
+        if: runner.os == 'Linux'
+        working-directory: server
+        run: pytest --tb=short
+
+      - name: Run unit-only server test suite
+        if: runner.os != 'Linux'
+        working-directory: server
+        run: pytest --tb=short -m "not integration"
+
+      - name: Tear down services
+        if: runner.os == 'Linux' && always()
+        run: docker compose down -v --remove-orphans
+
+  test-sdk-python:
+    name: test-sdk-python (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - macos-latest
+          - windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: sdk/python/pyproject.toml
+
+      - name: Install Python SDK dependencies
+        working-directory: sdk/python
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+
+      - name: Run Python SDK tests
+        working-directory: sdk/python
+        run: pytest
+
+  test-sdk-typescript:
+    name: test-sdk-typescript (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - macos-latest
+          - windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: sdk/typescript/package-lock.json
+
+      - name: Install TypeScript SDK dependencies
+        working-directory: sdk/typescript
+        run: npm ci
+
+      - name: Run TypeScript SDK tests
+        working-directory: sdk/typescript
+        run: npm test
+
+  test-adapters:
+    name: test-adapters (${{ matrix.adapter }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        adapter:
+          - autogen
+          - crewai
+          - haystack
+          - langchain
+          - langgraph
+          - llamaindex
+          - openai_agents
+          - pydantic_ai
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: |
+            sdk/python/pyproject.toml
+            adapters/${{ matrix.adapter }}/pyproject.toml
+
+      - name: Install adapter test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pytest pytest-asyncio
+          python -m pip install -e "./sdk/python"
+          python -m pip install -e "./adapters/${{ matrix.adapter }}"
+
+      - name: Run adapter tests
+        run: pytest "adapters/${{ matrix.adapter }}/tests" --tb=short
+
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: server/pyproject.toml
+
+      - name: Install lint dependencies
+        working-directory: server
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+
+      - name: Run Ruff checks
+        run: |
+          ruff check server/
+          ruff format --check server/
+
+  check-docs:
+    name: check-docs
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: docs-requirements.txt
+
+      - name: Install docs dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r docs-requirements.txt
+
+      - name: Run docs checks
+        run: bash scripts/check-docs.sh
+
+  publish-python:
+    name: publish-python
+    runs-on: ubuntu-latest
+    needs:
+      - test-server
+      - test-sdk-python
+      - test-sdk-typescript
+      - test-adapters
+      - lint
+      - check-docs
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: sdk/python/pyproject.toml
+
+      - name: Build Python SDK distribution
+        working-directory: sdk/python
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install build
+          python -m build
+
+      - name: Publish Python SDK to PyPI
+        uses: pypa/gh-action-pypa-publish@release/v1
+        with:
+          user: __token__
+          password: ${{ secrets.PYPI_API_TOKEN }}
+          packages-dir: sdk/python/dist/
+
+  publish-typescript:
+    name: publish-typescript
+    runs-on: ubuntu-latest
+    needs:
+      - test-server
+      - test-sdk-python
+      - test-sdk-typescript
+      - test-adapters
+      - lint
+      - check-docs
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          registry-url: "https://registry.npmjs.org"
+          cache: npm
+          cache-dependency-path: sdk/typescript/package-lock.json
+
+      - name: Publish TypeScript SDK to npm
+        working-directory: sdk/typescript
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          npm ci
+          npm publish --access public
+
+  create-release:
+    name: create-release
+    runs-on: ubuntu-latest
+    needs:
+      - test-server
+      - test-sdk-python
+      - test-sdk-typescript
+      - test-adapters
+      - lint
+      - check-docs
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ github.ref_name }}
+          tag_name: ${{ github.ref_name }}
+          generate_release_notes: true

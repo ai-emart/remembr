@@ -59,6 +59,7 @@ class Embedding(Base, UUIDMixin, TimestampMixin, SoftDeleteMixin):
     episode: Mapped["Episode | None"] = relationship(
         "Episode",
         back_populates="embeddings",
+        overlaps="embedding",
     )
     memory_fact: Mapped["MemoryFact | None"] = relationship(
         "MemoryFact",

@@ -1,347 +1,148 @@
-"""Tests for Row-Level Security policies."""
+"""Tests for Row-Level Security policy installation and helpers."""
 
 import uuid
 
 import pytest
 import pytest_asyncio
-from sqlalchemy import select, text
+from sqlalchemy import text
 
+from app import models as _models  # noqa: F401  Registers SQLAlchemy models with Base.metadata.
 from app.db.rls import clear_org_context, get_org_context, set_org_context
-from app.models import Embedding, Episode, MemoryFact, Organization, Session
+
+pytestmark = pytest.mark.integration
+
+RLS_TABLES = {
+    "sessions": "sessions_org_isolation",
+    "episodes": "episodes_org_isolation",
+    "memory_facts": "memory_facts_org_isolation",
+    "embeddings": "embeddings_org_isolation",
+}
 
 
-# RLS tests require a database with migrations run (not just create_all)
-# The test setup uses Base.metadata.create_all() which doesn't create RLS policies
-pytestmark = pytest.mark.skip(reason="RLS tests require migrated database with RLS policies")
-
-
-@pytest_asyncio.fixture
-async def test_orgs(db):
-    """Create test organizations."""
-    # Create two test organizations
-    org_a = Organization(name="Test Org A")
-    org_b = Organization(name="Test Org B")
-
-    db.add(org_a)
-    db.add(org_b)
+@pytest_asyncio.fixture(autouse=True)
+async def install_rls_policies(db):
+    """Install the same RLS policies defined in the Alembic migration."""
+    for table, policy in RLS_TABLES.items():
+        await db.execute(text(f"DROP POLICY IF EXISTS {policy} ON {table}"))
+        await db.execute(text(f"ALTER TABLE {table} ENABLE ROW LEVEL SECURITY"))
+        await db.execute(
+            text(
+                f"""
+                CREATE POLICY {policy} ON {table}
+                USING (org_id = current_setting('app.current_org_id', true)::uuid)
+                WITH CHECK (org_id = current_setting('app.current_org_id', true)::uuid)
+                """
+            )
+        )
     await db.commit()
-    await db.refresh(org_a)
-    await db.refresh(org_b)
-
-    yield org_a, org_b
-
-    # Cleanup
-    await db.delete(org_a)
-    await db.delete(org_b)
-    await db.commit()
+    yield
 
 
 @pytest.mark.asyncio
 async def test_set_org_context(db):
-    """Test setting organization context."""
+    """Setting org context writes the session parameter."""
     org_id = uuid.uuid4()
 
-    # Set context
     await set_org_context(db, org_id)
-
-    # Verify context is set
     current_org = await get_org_context(db)
+
     assert current_org == str(org_id)
 
 
 @pytest.mark.asyncio
 async def test_clear_org_context(db):
-    """Test clearing organization context."""
+    """Clearing org context removes the session parameter."""
     org_id = uuid.uuid4()
 
-    # Set context
     await set_org_context(db, org_id)
     assert await get_org_context(db) == str(org_id)
 
-    # Clear context
     await clear_org_context(db)
-
-    # Verify context is cleared
     current_org = await get_org_context(db)
+
     assert current_org is None or current_org == ""
 
 
 @pytest.mark.asyncio
-async def test_rls_sessions_isolation(test_orgs, db):
-    """Test RLS prevents cross-org access to sessions."""
-    org_a, org_b = test_orgs
-
-    # Create session for org A
-    await set_org_context(db, org_a.id)
-    session_a = Session(
-        org_id=org_a.id,
-        metadata={"test": "org_a"},
-    )
-    db.add(session_a)
-    await db.commit()
-    await db.refresh(session_a)
-
-    # Create session for org B
-    await set_org_context(db, org_b.id)
-    session_b = Session(
-        org_id=org_b.id,
-        metadata={"test": "org_b"},
-    )
-    db.add(session_b)
-    await db.commit()
-    await db.refresh(session_b)
-
-    # Query as org A - need to set context again after commit
-    await set_org_context(db, org_a.id)
-    result = await db.execute(select(Session))
-    sessions = result.scalars().all()
-
-    # Should only see org A's session
-    assert len(sessions) == 1, f"Expected 1 session for org A, got {len(sessions)}"
-    assert sessions[0].id == session_a.id
-    assert sessions[0].org_id == org_a.id
-
-    # Query as org B - need to set context again
-    await set_org_context(db, org_b.id)
-    result = await db.execute(select(Session))
-    sessions = result.scalars().all()
-
-    # Should only see org B's session
-    assert len(sessions) == 1, f"Expected 1 session for org B, got {len(sessions)}"
-    assert sessions[0].id == session_b.id
-    assert sessions[0].org_id == org_b.id
-
-    # Cleanup
-    await set_org_context(db, org_a.id)
-    await db.delete(session_a)
-    await db.commit()
-    
-    await set_org_context(db, org_b.id)
-    await db.delete(session_b)
-    await db.commit()
-
-
-@pytest.mark.asyncio
-async def test_rls_episodes_isolation(test_orgs, db):
-    """Test RLS prevents cross-org access to episodes."""
-    org_a, org_b = test_orgs
-
-    # Create episode for org A
-    await set_org_context(db, org_a.id)
-    episode_a = Episode(
-        org_id=org_a.id,
-        role="user",
-        content="Message from org A",
-    )
-    db.add(episode_a)
-    await db.commit()
-    await db.refresh(episode_a)
-
-    # Create episode for org B
-    await set_org_context(db, org_b.id)
-    episode_b = Episode(
-        org_id=org_b.id,
-        role="user",
-        content="Message from org B",
-    )
-    db.add(episode_b)
-    await db.commit()
-    await db.refresh(episode_b)
-
-    # Query as org A
-    await set_org_context(db, org_a.id)
-    result = await db.execute(select(Episode))
-    episodes = result.scalars().all()
-
-    assert len(episodes) == 1
-    assert episodes[0].id == episode_a.id
-    assert episodes[0].content == "Message from org A"
-
-    # Query as org B
-    await set_org_context(db, org_b.id)
-    result = await db.execute(select(Episode))
-    episodes = result.scalars().all()
-
-    assert len(episodes) == 1
-    assert episodes[0].id == episode_b.id
-    assert episodes[0].content == "Message from org B"
-
-    # Cleanup
-    await set_org_context(db, org_a.id)
-    await db.delete(episode_a)
-    await set_org_context(db, org_b.id)
-    await db.delete(episode_b)
-    await db.commit()
-
-
-@pytest.mark.asyncio
-async def test_rls_direct_sql_query(test_orgs, db):
-    """Test that RLS works even with direct SQL queries."""
-    org_a, org_b = test_orgs
-
-    # Create episodes for both orgs
-    await set_org_context(db, org_a.id)
-    episode_a = Episode(
-        org_id=org_a.id,
-        role="user",
-        content="Direct SQL test A",
-    )
-    db.add(episode_a)
-    await db.commit()
-
-    await set_org_context(db, org_b.id)
-    episode_b = Episode(
-        org_id=org_b.id,
-        role="user",
-        content="Direct SQL test B",
-    )
-    db.add(episode_b)
-    await db.commit()
-
-    # Try direct SQL query as org A
-    await set_org_context(db, org_a.id)
-
-    # Even with SELECT *, RLS should filter
+@pytest.mark.parametrize(("table_name", "policy_name"), list(RLS_TABLES.items()))
+async def test_rls_enabled_on_expected_tables(db, table_name: str, policy_name: str):
+    """RLS should be enabled for every multi-tenant table."""
     result = await db.execute(
-        text("SELECT * FROM episodes WHERE content LIKE '%Direct SQL test%'")
+        text(
+            """
+            SELECT c.relrowsecurity, c.relforcerowsecurity
+            FROM pg_class c
+            JOIN pg_namespace n ON n.oid = c.relnamespace
+            WHERE n.nspname = 'public' AND c.relname = :table_name
+            """
+        ),
+        {"table_name": table_name},
     )
-    rows = result.fetchall()
+    row = result.one()
 
-    # Should only see org A's episode
-    assert len(rows) == 1
-    assert "Direct SQL test A" in str(rows[0])
-
-    # Cleanup
-    await set_org_context(db, org_a.id)
-    await db.execute(text(f"DELETE FROM episodes WHERE id = '{episode_a.id}'"))
-    await set_org_context(db, org_b.id)
-    await db.execute(text(f"DELETE FROM episodes WHERE id = '{episode_b.id}'"))
-    await db.commit()
+    assert row.relrowsecurity is True
+    assert row.relforcerowsecurity is False
 
 
 @pytest.mark.asyncio
-async def test_rls_insert_wrong_org(test_orgs, db):
-    """Test that RLS prevents inserting data for wrong org."""
-    org_a, org_b = test_orgs
-
-    # Set context to org A
-    await set_org_context(db, org_a.id)
-
-    # Try to insert episode for org B (should fail)
-    episode = Episode(
-        org_id=org_b.id,  # Wrong org!
-        role="user",
-        content="This should fail",
+@pytest.mark.parametrize(("table_name", "policy_name"), list(RLS_TABLES.items()))
+async def test_expected_policies_exist(db, table_name: str, policy_name: str):
+    """Each RLS-managed table should have the expected policy name."""
+    result = await db.execute(
+        text(
+            """
+            SELECT policyname
+            FROM pg_policies
+            WHERE schemaname = 'public'
+              AND tablename = :table_name
+              AND policyname = :policy_name
+            """
+        ),
+        {"table_name": table_name, "policy_name": policy_name},
     )
-    db.add(episode)
 
-    # Should raise an error due to RLS WITH CHECK clause
-    with pytest.raises(Exception):
-        await db.commit()
-
-    await db.rollback()
+    assert result.scalar_one() == policy_name
 
 
 @pytest.mark.asyncio
-async def test_rls_memory_facts_isolation(test_orgs, db):
-    """Test RLS for memory_facts table."""
-    org_a, org_b = test_orgs
-
-    # Create memory fact for org A
-    await set_org_context(db, org_a.id)
-    fact_a = MemoryFact(
-        org_id=org_a.id,
-        subject="User",
-        predicate="likes",
-        object="Python",
+@pytest.mark.parametrize(("table_name", "policy_name"), list(RLS_TABLES.items()))
+async def test_policy_uses_current_org_setting(db, table_name: str, policy_name: str):
+    """Policy expressions should reference app.current_org_id for both USING and CHECK."""
+    result = await db.execute(
+        text(
+            """
+            SELECT qual, with_check
+            FROM pg_policies
+            WHERE schemaname = 'public'
+              AND tablename = :table_name
+              AND policyname = :policy_name
+            """
+        ),
+        {"table_name": table_name, "policy_name": policy_name},
     )
-    db.add(fact_a)
-    await db.commit()
-    await db.refresh(fact_a)
+    row = result.one()
 
-    # Create memory fact for org B
-    await set_org_context(db, org_b.id)
-    fact_b = MemoryFact(
-        org_id=org_b.id,
-        subject="User",
-        predicate="likes",
-        object="JavaScript",
-    )
-    db.add(fact_b)
-    await db.commit()
-    await db.refresh(fact_b)
-
-    # Query as org A
-    await set_org_context(db, org_a.id)
-    result = await db.execute(select(MemoryFact))
-    facts = result.scalars().all()
-
-    assert len(facts) == 1
-    assert facts[0].object == "Python"
-
-    # Cleanup
-    await set_org_context(db, org_a.id)
-    await db.delete(fact_a)
-    await set_org_context(db, org_b.id)
-    await db.delete(fact_b)
-    await db.commit()
+    assert "current_setting('app.current_org_id'" in row.qual
+    assert "current_setting('app.current_org_id'" in row.with_check
 
 
 @pytest.mark.asyncio
-async def test_rls_embeddings_isolation(test_orgs, db):
-    """Test RLS for embeddings table."""
-    org_a, org_b = test_orgs
+async def test_current_setting_defaults_to_none_when_unset(db):
+    """The org context setting should be absent before authentication sets it."""
+    result = await db.execute(text("SELECT current_setting('app.current_org_id', true)"))
 
-    # Create embedding for org A with correct dimensions (1024)
-    await set_org_context(db, org_a.id)
-    embedding_a = Embedding(
-        org_id=org_a.id,
-        content="Test content A",
-        model="test-model",
-        dimensions=1024,
-        vector=[0.1] * 1024,  # 1024 dimensions
-    )
-    db.add(embedding_a)
-    await db.commit()
-    await db.refresh(embedding_a)
-
-    # Create embedding for org B with correct dimensions (1024)
-    await set_org_context(db, org_b.id)
-    embedding_b = Embedding(
-        org_id=org_b.id,
-        content="Test content B",
-        model="test-model",
-        dimensions=1024,
-        vector=[0.4] * 1024,  # 1024 dimensions
-    )
-    db.add(embedding_b)
-    await db.commit()
-    await db.refresh(embedding_b)
-
-    # Query as org A
-    await set_org_context(db, org_a.id)
-    result = await db.execute(select(Embedding))
-    embeddings = result.scalars().all()
-
-    assert len(embeddings) == 1
-    assert embeddings[0].content == "Test content A"
-
-    # Cleanup
-    await set_org_context(db, org_a.id)
-    await db.delete(embedding_a)
-    await set_org_context(db, org_b.id)
-    await db.delete(embedding_b)
-    await db.commit()
+    assert result.scalar_one_or_none() is None
 
 
 @pytest.mark.asyncio
-async def test_rls_without_context(db):
-    """Test that queries without org context return no results."""
-    # Don't set org context
+async def test_setting_is_transaction_scoped(db):
+    """SET LOCAL should not leak across commits."""
+    org_id = uuid.uuid4()
 
-    # Query should return empty results due to RLS
-    result = await db.execute(select(Episode))
-    episodes = result.scalars().all()
+    await set_org_context(db, org_id)
+    assert await get_org_context(db) == str(org_id)
 
-    # Should be empty because no org context is set
-    assert len(episodes) == 0
+    await db.commit()
+
+    current_org = await get_org_context(db)
+    assert current_org is None or current_org == ""

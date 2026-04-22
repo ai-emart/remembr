@@ -5,13 +5,18 @@ from pydantic import SecretStr, ValidationError
 
 from app.config import Settings
 
+def test_settings_validation(monkeypatch: pytest.MonkeyPatch):
+    """Test that Settings validates required fields when env file loading is disabled."""
+    for key in ("DATABASE_URL", "REDIS_URL", "SECRET_KEY"):
+        monkeypatch.delenv(key, raising=False)
 
-@pytest.mark.skip(reason="Cannot test validation when .env file provides all required values")
-def test_settings_validation():
-    """Test that Settings validates required fields."""
-    # This test cannot run in CI/CD because .env file provides all required values
-    # In a real scenario without .env, Settings would raise ValidationError for missing fields
-    pass
+    with pytest.raises(ValidationError) as exc_info:
+        Settings(_env_file=None)
+
+    message = str(exc_info.value)
+    assert "database_url" in message
+    assert "redis_url" in message
+    assert "secret_key" in message
 
 
 def test_settings_with_valid_data():

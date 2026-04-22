@@ -62,13 +62,14 @@ pass "/health OK"
 TS=$(date +%s)
 EMAIL="smoke-${TS}@test.local"
 PASS="smoke-pass-${TS}"
+ORG_NAME="Smoke Test Org ${TS}"
 
 REG=$(curl -sf -X POST "${SERVER_URL}/api/v1/auth/register" \
   -H "Content-Type: application/json" \
-  -d "{\"email\":\"${EMAIL}\",\"password\":\"${PASS}\",\"name\":\"Smoke Test\"}" || \
+  -d "{\"email\":\"${EMAIL}\",\"password\":\"${PASS}\",\"org_name\":\"${ORG_NAME}\"}" || \
   fail "Registration request failed")
 log "Register response: $REG"
-echo "$REG" | grep -qE '"id"|"email"' || fail "Registration did not return user object"
+echo "$REG" | grep -q '"access_token"' || fail "Registration did not return auth tokens"
 pass "Register OK"
 
 # ---------------------------------------------------------------------------
@@ -88,32 +89,45 @@ pass "Login OK (token length: ${#TOKEN})"
 APIKEY_RESP=$(curl -sf -X POST "${SERVER_URL}/api/v1/api-keys" \
   -H "Authorization: Bearer ${TOKEN}" \
   -H "Content-Type: application/json" \
-  -d '{"name":"smoke-key","scope":"agent"}' || \
+  -d '{"name":"smoke-key"}' || \
   fail "API key creation failed")
-API_KEY=$(echo "$APIKEY_RESP" | grep -o '"key":"[^"]*"' | cut -d'"' -f4)
+API_KEY=$(echo "$APIKEY_RESP" | grep -o '"api_key":"[^"]*"' | cut -d'"' -f4)
 [ -n "$API_KEY" ] || fail "No key in API key response"
 pass "API key created"
 
 # ---------------------------------------------------------------------------
-# 7. Store a memory episode
+# 7. Create a session
 # ---------------------------------------------------------------------------
-STORE=$(curl -sf -X POST "${SERVER_URL}/api/v1/memory/episodes" \
+SESSION_RESP=$(curl -sf -X POST "${SERVER_URL}/api/v1/sessions" \
   -H "X-API-Key: ${API_KEY}" \
   -H "Content-Type: application/json" \
-  -d '{"role":"user","content":"The smoke test ran successfully at '"${TS}"'","tags":["smoke","test"]}' || \
+  -d '{"metadata":{"source":"smoke-test"}}' || \
+  fail "Session creation failed")
+SESSION_ID=$(echo "$SESSION_RESP" | grep -o '"session_id":"[^"]*"' | cut -d'"' -f4)
+[ -n "$SESSION_ID" ] || fail "No session_id in session response"
+pass "Session created"
+
+# ---------------------------------------------------------------------------
+# 8. Store a memory episode
+# ---------------------------------------------------------------------------
+STORE=$(curl -sf -X POST "${SERVER_URL}/api/v1/memory" \
+  -H "X-API-Key: ${API_KEY}" \
+  -H "Content-Type: application/json" \
+  -d "{\"role\":\"user\",\"content\":\"The smoke test ran successfully at ${TS}\",\"session_id\":\"${SESSION_ID}\",\"tags\":[\"smoke\",\"test\"]}" || \
   fail "Memory store failed")
 log "Store response: $STORE"
-echo "$STORE" | grep -q '"id"' || fail "Store did not return episode id"
+echo "$STORE" | grep -q '"episode_id"' || fail "Store did not return episode id"
 pass "Memory store OK"
 
 # ---------------------------------------------------------------------------
-# 8. List episodes (tag search — no embeddings required)
+# 9. Fetch the session context
 # ---------------------------------------------------------------------------
-LIST=$(curl -sf "${SERVER_URL}/api/v1/memory/episodes?tags=smoke" \
+SESSION_DETAIL=$(curl -sf "${SERVER_URL}/api/v1/sessions/${SESSION_ID}" \
   -H "X-API-Key: ${API_KEY}" || \
-  fail "Episode list failed")
-echo "$LIST" | grep -q '"items"' || fail "List did not return items"
-pass "Episode list OK"
+  fail "Session detail fetch failed")
+echo "$SESSION_DETAIL" | grep -q 'Live\|smoke test ran successfully\|The smoke test ran successfully' || \
+  fail "Session detail did not return stored message"
+pass "Session detail OK"
 
 # ---------------------------------------------------------------------------
 # Done

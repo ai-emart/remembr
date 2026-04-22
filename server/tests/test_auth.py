@@ -22,6 +22,7 @@ from app.services.auth import (
 )
 
 settings = get_settings()
+pytestmark = pytest.mark.integration
 
 
 class TestPasswordHashing:

@@ -1,17 +1,17 @@
 {
   "name": "@remembr/sdk",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Persistent memory infrastructure for AI agents",
   "author": "Emmanuel Nwanguma",
   "license": "MIT",
-  "homepage": "https://github.com/emartai/remembr",
+  "homepage": "https://github.com/ai-emart/remembr",
   "repository": {
     "type": "git",
-    "url": "https://github.com/emartai/remembr.git",
+    "url": "https://github.com/ai-emart/remembr.git",
     "directory": "sdk/typescript"
   },
   "bugs": {
-    "url": "https://github.com/emartai/remembr/issues"
+    "url": "https://github.com/ai-emart/remembr/issues"
   },
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

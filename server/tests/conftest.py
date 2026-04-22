@@ -1,5 +1,6 @@
 """Pytest configuration and fixtures for tests."""
 
+import os
 from collections.abc import AsyncGenerator
 from fnmatch import fnmatch
 from time import time
@@ -13,6 +14,13 @@ from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 pytest_plugins = ("pytest_asyncio",)
+
+
+os.environ.setdefault("DATABASE_URL", "postgresql://postgres:postgres@localhost:5433/remembr_test")
+os.environ.setdefault("TEST_DATABASE_URL", "postgresql://postgres:postgres@localhost:5433/remembr_test")
+os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
+os.environ.setdefault("SECRET_KEY", "test-secret-key")
+os.environ.setdefault("JINA_API_KEY", "test-jina-key")
 
 
 class _FakePipeline:
@@ -226,3 +234,43 @@ async def client(db: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
     app.dependency_overrides.clear()
     redis_module._redis_client = None
     redis_module._connection_pool = None
+
+
+@pytest_asyncio.fixture(scope="function")
+async def real_redis() -> AsyncGenerator[Redis, None]:
+    """Connect to a live Redis instance for Docker-backed integration tests."""
+    redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+    client = Redis.from_url(redis_url, decode_responses=True, encoding="utf-8")
+    await client.ping()
+    await client.flushdb()
+    try:
+        yield client
+    finally:
+        await client.flushdb()
+        await client.aclose()
+
+
+@pytest_asyncio.fixture(scope="function")
+async def live_client(db: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
+    """Create a client that uses the app lifespan and real Redis."""
+    from app.config import get_settings
+    from app.db.session import get_db
+    from app.main import create_app
+
+    get_settings.cache_clear()
+    app = create_app()
+
+    async def override_get_db() -> AsyncGenerator[AsyncSession, None]:
+        yield db
+
+    app.dependency_overrides[get_db] = override_get_db
+
+    async with app.router.lifespan_context(app):
+        async with AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://test",
+        ) as ac:
+            yield ac
+
+    app.dependency_overrides.clear()
+    get_settings.cache_clear()

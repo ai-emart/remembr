@@ -5,7 +5,7 @@ from contextvars import ContextVar
 from dataclasses import dataclass
 from typing import Annotated
 
-from fastapi import Depends, Header, HTTPException, status
+from fastapi import Depends, Header, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from loguru import logger
 from redis.asyncio import Redis
@@ -68,6 +68,11 @@ def set_current_context(context: RequestContext) -> None:
         context: RequestContext to set
     """
     _request_context_var.set(context)
+
+
+def clear_current_context() -> None:
+    """Clear any previously stored request context."""
+    _request_context_var.set(None)
 
 
 async def _try_jwt_auth(
@@ -191,6 +196,7 @@ async def _try_api_key_auth(
 
 
 async def get_request_context(
+    request: Request,
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(security)] = None,
     x_api_key: Annotated[str | None, Header()] = None,
     db: Annotated[AsyncSession, Depends(get_db)] = None,
@@ -228,6 +234,7 @@ async def get_request_context(
             context.request_id = str(uuid.uuid4())
 
         set_current_context(context)
+        request.state.request_context = context
 
         logger.debug(
             "Request context established",

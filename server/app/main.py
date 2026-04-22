@@ -129,49 +129,53 @@ def create_app() -> FastAPI:
         request.state.request_id = request_id
 
         # Import here to avoid circular dependency
-        from app.middleware.context import get_current_context
+        from app.middleware.context import clear_current_context, get_current_context
 
         # Start with request_id in logger context
         log_context = {"request_id": request_id}
 
         with logger.contextualize(**log_context):
+            clear_current_context()
             logger.info(
                 "Request started",
                 method=request.method,
                 path=request.url.path,
             )
 
-            # Process request
-            response = await call_next(request)
+            try:
+                # Process request
+                response = await call_next(request)
 
-            # After request processing, check if we have auth context
-            ctx = get_current_context()
-            if ctx:
-                # Update logger context with auth info
-                log_context.update(
-                    {
-                        "org_id": str(ctx.org_id),
-                        "user_id": str(ctx.user_id) if ctx.user_id else None,
-                        "agent_id": str(ctx.agent_id) if ctx.agent_id else None,
-                        "auth_method": ctx.auth_method,
-                    }
-                )
+                # After request processing, check if we have auth context
+                ctx = getattr(request.state, "request_context", None) or get_current_context()
+                if ctx:
+                    # Update logger context with auth info
+                    log_context.update(
+                        {
+                            "org_id": str(ctx.org_id),
+                            "user_id": str(ctx.user_id) if ctx.user_id else None,
+                            "agent_id": str(ctx.agent_id) if ctx.agent_id else None,
+                            "auth_method": ctx.auth_method,
+                        }
+                    )
 
-                # Add to response headers
-                response.headers["X-Org-ID"] = str(ctx.org_id)
+                    # Add to response headers
+                    response.headers["X-Org-ID"] = str(ctx.org_id)
 
-            response.headers["X-Request-ID"] = request_id
+                response.headers["X-Request-ID"] = request_id
 
-            # Log completion with full context
-            with logger.contextualize(**log_context):
-                logger.info(
-                    "Request completed",
-                    method=request.method,
-                    path=request.url.path,
-                    status_code=response.status_code,
-                )
+                # Log completion with full context
+                with logger.contextualize(**log_context):
+                    logger.info(
+                        "Request completed",
+                        method=request.method,
+                        path=request.url.path,
+                        status_code=response.status_code,
+                    )
 
-            return response
+                return response
+            finally:
+                clear_current_context()
 
     # Global exception handlers
     @app.exception_handler(RemembrException)

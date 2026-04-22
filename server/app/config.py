@@ -225,7 +225,7 @@ def get_test_settings() -> Settings:
     Points at the Docker pgvector container on port 5433.
     """
     database_url = os.getenv(
-        "DATABASE_URL",
+        "TEST_DATABASE_URL",
         "postgresql+asyncpg://postgres:postgres@localhost:5433/remembr_test",
     )
     if database_url.startswith("postgresql://"):

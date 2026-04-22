@@ -6,24 +6,23 @@ build-backend = "setuptools.build_meta"
 name = "remembr"
 version = "0.2.0"
 description = "Persistent memory infrastructure for AI agents"
-readme = "README.md"
-license = {text = "MIT"}
+readme = {file = "README.md", content-type = "text/markdown"}
+license = "MIT"
 requires-python = ">=3.11"
 authors = [
     {name = "Emmanuel Nwanguma", email = "nwangumaemmanuel29@gmail.com"},
 ]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
-    "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Typing :: Typed",
 ]
-keywords = ["ai", "memory", "agents", "llm", "langchain", "embeddings", "vector-search"]
+keywords = ["ai", "memory", "agents", "llm", "langchain", "langgraph", "crewai", "autogen", "llamaindex", "embeddings", "vector-search"]
 dependencies = [
     "httpx>=0.25.0",
     "pydantic>=2.5.0",
@@ -33,10 +32,10 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/emartai/remembr"
-Repository = "https://github.com/emartai/remembr"
-Documentation = "https://github.com/emartai/remembr#readme"
-"Bug Tracker" = "https://github.com/emartai/remembr/issues"
+Homepage = "https://github.com/ai-emart/remembr"
+Repository = "https://github.com/ai-emart/remembr"
+Documentation = "https://github.com/ai-emart/remembr#readme"
+"Bug Tracker" = "https://github.com/ai-emart/remembr/issues"
 
 [project.optional-dependencies]
 dev = [

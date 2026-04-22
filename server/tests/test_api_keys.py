@@ -17,6 +17,8 @@ from app.services.api_keys import (
     verify_api_key,
 )
 
+pytestmark = pytest.mark.integration
+
 
 class TestAPIKeyGeneration:
     """Tests for API key generation and hashing."""

@@ -127,6 +127,7 @@ class Episode(Base, UUIDMixin, SoftDeleteMixin):
         "Embedding",
         back_populates="episode",
         uselist=False,
+        overlaps="embeddings",
     )
 
     def __repr__(self) -> str:

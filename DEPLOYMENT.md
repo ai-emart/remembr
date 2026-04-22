@@ -1132,7 +1132,7 @@ alembic upgrade head
 ## Support
 
 For deployment assistance:
-- **GitHub Issues**: [Report deployment issues](https://github.com/emartai/remembr/issues)
+- **GitHub Issues**: [Report deployment issues](https://github.com/ai-emart/remembr/issues)
 - **Email**: [nwangumaemmanuel29@gmail.com](mailto:nwangumaemmanuel29@gmail.com)
 - **Documentation**: [docs/](docs/)
 

@@ -15,8 +15,7 @@ Install the backend and SDK in editable mode, then start the Docker stack:
 ```bash
 pip install -r server/requirements.txt
 pip install -e sdk/python
-docker-compose up -d
-docker-compose exec server alembic upgrade head
+bash scripts/docker-init.sh
 ```
 
 ## Workflow
@@ -48,4 +47,3 @@ Run adapter-local tests when touching an adapter.
 ## Docs
 
 Documentation changes should update examples, method signatures, and deployment instructions in the same pass whenever behavior changes.
-

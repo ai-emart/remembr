@@ -1,42 +1,36 @@
 ---
-name: Feature Request
-about: Suggest an idea for Remembr
-title: '[FEATURE] '
+name: Feature request
+about: Suggest an improvement or new capability for Remembr
+title: "[Feature] "
 labels: enhancement
-assignees: ''
+assignees: ""
 ---
 
-## Problem Statement
+## Problem
 
-A clear and concise description of what the problem is. Ex. I'm always frustrated when [...]
+What problem are you trying to solve?
 
 ## Proposed Solution
 
-A clear and concise description of what you want to happen.
+What would you like Remembr to do?
+
+## Why This Matters
+
+Describe the user or business impact.
 
 ## Alternatives Considered
 
-A clear and concise description of any alternative solutions or features you've considered.
+What alternatives have you tried or considered?
 
-## Use Cases
+## Scope
 
-Describe specific use cases where this feature would be valuable:
-
-1. Use case 1
-2. Use case 2
-3. Use case 3
-
-## Implementation Ideas
-
-If you have ideas on how this could be implemented, please share them here.
+- Server API
+- Python SDK
+- TypeScript SDK
+- Adapters
+- Docs
+- Docker / deployment
 
 ## Additional Context
 
-Add any other context, screenshots, or examples about the feature request here.
-
-## Would you be willing to contribute this feature?
-
-- [ ] Yes, I can submit a PR
-- [ ] Yes, with guidance
-- [ ] No, but I can help test
-- [ ] No
+Links, examples, screenshots, or implementation ideas.

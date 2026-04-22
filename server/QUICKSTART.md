@@ -26,7 +26,8 @@ cp .env.example .env
 # - DATABASE_URL
 # - REDIS_URL
 # - SECRET_KEY (generate with: openssl rand -hex 32)
-# - JINA_API_KEY
+# - EMBEDDING_PROVIDER (defaults to sentence_transformers)
+# - JINA_API_KEY only when EMBEDDING_PROVIDER=jina
 ```
 
 ### 3. Start the Server

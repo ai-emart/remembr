@@ -126,10 +126,10 @@ class ScopeResolver:
         if not scopes:
             return false()
 
-        org_col = org_id_col or MemoryFact.org_id
-        team_col = team_id_col or MemoryFact.team_id
-        user_col = user_id_col or MemoryFact.user_id
-        agent_col = agent_id_col or MemoryFact.agent_id
+        org_col = org_id_col if org_id_col is not None else MemoryFact.org_id
+        team_col = team_id_col if team_id_col is not None else MemoryFact.team_id
+        user_col = user_id_col if user_id_col is not None else MemoryFact.user_id
+        agent_col = agent_id_col if agent_id_col is not None else MemoryFact.agent_id
 
         conditions: list[ColumnElement[bool]] = []
         for scope in scopes:

@@ -11,9 +11,8 @@ from unittest.mock import AsyncMock, Mock
 from uuid import uuid4
 
 import pytest
-
-# Skip memory API tests that have mocking issues
-pytestmark = pytest.mark.skip(reason="Memory API tests require complex mocking setup")
+from starlette.requests import Request
+from starlette.responses import Response
 
 if "tiktoken" not in sys.modules:
     fake_tiktoken = types.ModuleType("tiktoken")
@@ -25,7 +24,7 @@ if "tiktoken" not in sys.modules:
     fake_tiktoken.get_encoding = lambda _name: _FakeEncoding()
     sys.modules["tiktoken"] = fake_tiktoken
 
-os.environ.setdefault("DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/remembr_test")
+os.environ.setdefault("TEST_DATABASE_URL", "postgresql://postgres:postgres@localhost:5433/remembr_test")
 os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
 os.environ.setdefault("SECRET_KEY", "test-secret-key-for-memory-api-tests")
 os.environ.setdefault("JINA_API_KEY", "test-jina-key")
@@ -96,7 +95,16 @@ async def test_create_session_and_log_memory(monkeypatch, ctx):
     redis = AsyncMock()
 
     session_id = uuid4()
-    episode = SimpleNamespace(id=uuid4(), session_id=session_id, created_at=datetime.now(UTC))
+    episode = SimpleNamespace(
+        id=uuid4(),
+        session_id=session_id,
+        created_at=datetime.now(UTC),
+        org_id=ctx.org_id,
+        role="user",
+        content="hello",
+        tags=[],
+        embedding_status="pending",
+    )
 
     async def _refresh_session(session_obj):
         session_obj.id = session_id
@@ -240,7 +248,9 @@ async def test_search_memory_enforces_limit_and_returns_results(monkeypatch, ctx
     )
     monkeypatch.setattr("app.api.v1.memory.MemoryQueryEngine", lambda episodic: fake_engine)
 
-    response = await search_memory(
+    response = await search_memory.__wrapped__(
+        Request({"type": "http", "method": "POST", "path": "/api/v1/memory/search", "headers": []}),
+        Response(),
         MemoryQueryRequest(query="needle", session_id=session_id, limit=100),
         ctx,
         db,
@@ -343,8 +353,10 @@ async def test_forgetting_endpoints(monkeypatch, ctx):
     )
 
     fake_service = Mock()
-    fake_service.delete_episode = AsyncMock(return_value=True)
-    fake_service.delete_session_memories = AsyncMock(return_value=3)
+    fake_service.delete_episode = AsyncMock(
+        return_value=SimpleNamespace(deleted=True, restorable_until=None)
+    )
+    fake_service.delete_session_memories = AsyncMock(return_value=(3, None))
     fake_service.delete_user_memories = AsyncMock(
         return_value=SimpleNamespace(deleted_episodes=10, deleted_sessions=2)
     )

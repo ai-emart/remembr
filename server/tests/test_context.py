@@ -2,7 +2,8 @@
 
 import uuid
 from datetime import UTC, datetime, timedelta
-from unittest.mock import AsyncMock, patch
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 from fastapi import Depends, FastAPI
@@ -16,13 +17,17 @@ from app.middleware.context import (
     require_auth,
     set_current_context,
 )
+from app.models.agent import Agent
 from app.models.organization import Organization
 from app.models.user import User
-
-# Skip tests that have complex setup issues
-pytestmark = pytest.mark.skip(reason="Context tests require additional setup for agents table and Redis")
 from app.services.api_keys import create_api_key
 from app.services.auth import create_access_token, hash_password
+
+pytestmark = pytest.mark.integration
+
+
+def _fake_request() -> SimpleNamespace:
+    return SimpleNamespace(state=SimpleNamespace())
 
 
 @pytest_asyncio.fixture
@@ -157,6 +162,7 @@ class TestJWTAuth:
         from app.middleware.context import get_request_context
 
         context = await get_request_context(
+            request=_fake_request(),
             credentials=credentials,
             x_api_key=None,
             db=db,
@@ -193,6 +199,7 @@ class TestJWTAuth:
         redis_mock = AsyncMock()
 
         context = await get_request_context(
+            request=_fake_request(),
             credentials=credentials,
             x_api_key=None,
             db=db,
@@ -226,6 +233,7 @@ class TestJWTAuth:
         redis_mock = AsyncMock()
 
         context = await get_request_context(
+            request=_fake_request(),
             credentials=credentials,
             x_api_key=None,
             db=db,
@@ -247,6 +255,7 @@ class TestJWTAuth:
         redis_mock = AsyncMock()
 
         context = await get_request_context(
+            request=_fake_request(),
             credentials=credentials,
             x_api_key=None,
             db=db,
@@ -277,6 +286,7 @@ class TestJWTAuth:
         redis_mock = AsyncMock()
 
         context = await get_request_context(
+            request=_fake_request(),
             credentials=credentials,
             x_api_key=None,
             db=db,
@@ -308,6 +318,7 @@ class TestAPIKeyAuth:
         redis_mock.setex.return_value = True
 
         context = await get_request_context(
+            request=_fake_request(),
             credentials=None,
             x_api_key=raw_key,
             db=db,
@@ -322,14 +333,20 @@ class TestAPIKeyAuth:
 
     async def test_api_key_auth_with_agent(self, db, test_org):
         """Test API key authentication with agent_id."""
-        agent_id = uuid.uuid4()
+        agent = Agent(
+            id=uuid.uuid4(),
+            org_id=test_org.id,
+            name="Agent Key Owner",
+        )
+        db.add(agent)
+        await db.flush()
 
         # Create API key with agent_id
         api_key, raw_key = await create_api_key(
             db=db,
             org_id=test_org.id,
             name="Agent Key",
-            agent_id=agent_id,
+            agent_id=agent.id,
         )
         await db.commit()
 
@@ -338,6 +355,7 @@ class TestAPIKeyAuth:
         redis_mock.setex.return_value = True
 
         context = await get_request_context(
+            request=_fake_request(),
             credentials=None,
             x_api_key=raw_key,
             db=db,
@@ -345,7 +363,7 @@ class TestAPIKeyAuth:
         )
 
         assert context is not None
-        assert context.agent_id == agent_id
+        assert context.agent_id == agent.id
         assert context.user_id is None
 
     async def test_api_key_auth_invalid_key(self, db):
@@ -354,6 +372,7 @@ class TestAPIKeyAuth:
         redis_mock.get.return_value = None
 
         context = await get_request_context(
+            request=_fake_request(),
             credentials=None,
             x_api_key="rmbr_invalid_key_12345678901234",
             db=db,
@@ -378,6 +397,7 @@ class TestAPIKeyAuth:
         redis_mock.get.return_value = None
 
         context = await get_request_context(
+            request=_fake_request(),
             credentials=None,
             x_api_key=raw_key,
             db=db,
@@ -416,6 +436,7 @@ class TestAuthFallback:
         redis_mock.setex.return_value = True
 
         context = await get_request_context(
+            request=_fake_request(),
             credentials=credentials,
             x_api_key=raw_key,
             db=db,
@@ -431,6 +452,7 @@ class TestAuthFallback:
         redis_mock = AsyncMock()
 
         context = await get_request_context(
+            request=_fake_request(),
             credentials=None,
             x_api_key=None,
             db=db,
@@ -477,6 +499,7 @@ class TestIntegration:
         """Test protected endpoint with JWT authentication."""
         # Create test app
         app = FastAPI()
+        from app.middleware.context import get_request_context
 
         @app.get("/protected")
         async def protected_route(
@@ -499,13 +522,17 @@ class TestIntegration:
         # Test with client
         client = TestClient(app)
 
-        # Mock the dependencies
-        with patch("app.middleware.context.get_db", return_value=db):
-            with patch("app.middleware.context.get_redis", return_value=AsyncMock()):
-                response = client.get(
-                    "/protected",
-                    headers={"Authorization": f"Bearer {token}"},
-                )
+        async def _override_context():
+            return RequestContext(
+                request_id="req-test",
+                org_id=test_user.org_id,
+                user_id=test_user.id,
+                agent_id=None,
+                auth_method="jwt",
+            )
+
+        app.dependency_overrides[get_request_context] = _override_context
+        response = client.get("/protected", headers={"Authorization": f"Bearer {token}"})
 
         assert response.status_code == 200
         data = response.json()
@@ -516,6 +543,7 @@ class TestIntegration:
     async def test_protected_endpoint_without_auth(self):
         """Test protected endpoint without authentication."""
         app = FastAPI()
+        from app.middleware.context import get_request_context
 
         @app.get("/protected")
         async def protected_route(
@@ -525,8 +553,10 @@ class TestIntegration:
 
         client = TestClient(app)
 
-        with patch("app.middleware.context.get_db", return_value=AsyncMock()):
-            with patch("app.middleware.context.get_redis", return_value=AsyncMock()):
-                response = client.get("/protected")
+        async def _override_context():
+            return None
+
+        app.dependency_overrides[get_request_context] = _override_context
+        response = client.get("/protected")
 
         assert response.status_code == 401

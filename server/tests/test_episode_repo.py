@@ -12,6 +12,8 @@ from sqlalchemy.dialects import postgresql
 from app.repositories import episode_repo
 from app.services.scoping import MemoryScope
 
+pytestmark = pytest.mark.integration
+
 
 class _FakeScalarResult:
     def __init__(self, value):

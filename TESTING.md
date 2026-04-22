@@ -197,6 +197,21 @@ def test_integration():
     pass
 ```
 
+### Live Docker-Backed Integration Tests
+
+Some server tests are intentionally wired to live local Docker services instead of
+in-memory fakes. These are marked with `live_integration` and currently cover:
+
+- auth to API key to short-term Redis-backed memory flow
+- outbound webhook delivery over real local HTTP
+
+Run only that slice with:
+
+```bash
+cd server
+pytest -m live_integration -v
+```
+
 Run specific markers:
 
 ```bash
@@ -205,6 +220,9 @@ pytest -m "not slow"
 
 # Run only integration tests
 pytest -m integration
+
+# Run only live Docker-backed integration tests
+pytest -m live_integration
 ```
 
 ## Coverage Configuration

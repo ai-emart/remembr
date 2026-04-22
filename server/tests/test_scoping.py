@@ -9,10 +9,6 @@ from sqlalchemy.dialects import postgresql
 from app.middleware.context import RequestContext
 from app.services.scoping import MemoryScope, ScopeResolver
 
-# Skip the SQL filter test that has Boolean clause issues
-pytestmark_sql_filter = pytest.mark.skip(reason="SQL filter test has Boolean clause evaluation issue")
-
-
 def _id() -> str:
     return str(uuid.uuid4())
 
@@ -45,7 +41,6 @@ def test_user_scoped_request_cannot_read_agent_private_memories() -> None:
     assert all(s.agent_id is None for s in readable)
 
 
-@pytestmark_sql_filter
 def test_to_sql_filter_generates_or_filter_for_readable_scopes() -> None:
     scope = MemoryScope(
         org_id=_id(),

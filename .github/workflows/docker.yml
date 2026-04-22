@@ -1,0 +1,39 @@
+name: Docker
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  smoke-test-docker:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Create CI environment file
+        run: |
+          cp .env.example .env
+          {
+            echo "SECRET_KEY=test-secret-key"
+            echo "EMBEDDING_PROVIDER=sentence_transformers"
+          } >> .env
+
+      - name: Build server image
+        run: docker compose build server
+
+      - name: Start full Docker stack
+        run: docker compose up -d --build
+
+      - name: Run smoke test
+        env:
+          SKIP_COMPOSE: "1"
+        run: bash scripts/smoke-test.sh
+
+      - name: Tear down stack
+        if: always()
+        run: docker compose down -v --remove-orphans

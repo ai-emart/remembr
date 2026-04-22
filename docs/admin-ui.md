@@ -11,7 +11,7 @@ The local admin UI is mounted at `/admin` in non-production environments.
 ## Start it
 
 ```bash
-docker-compose up -d
+bash scripts/docker-init.sh
 ```
 
 Then open `http://localhost:8000/admin`.
@@ -25,4 +25,3 @@ Then open `http://localhost:8000/admin`.
 ## Caution
 
 Treat the admin UI as an operator tool. Do not expose it publicly without your own access control layer.
-

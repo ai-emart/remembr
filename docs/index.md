@@ -1,6 +1,6 @@
 # Remembr
 
-Remembr is persistent memory infrastructure for AI systems. It gives agents a clean `store -> search -> delete` loop, session-aware short-term context, scoped multi-tenant isolation, and a self-hosted stack that runs with Docker and Ollama by default.
+Remembr is persistent memory infrastructure for AI systems. It gives agents a clean `store -> search -> delete` loop, session-aware short-term context, scoped multi-tenant isolation, and a self-hosted stack that starts locally with one command.
 
 ## Who it is for
 
@@ -11,7 +11,8 @@ Remembr is persistent memory infrastructure for AI systems. It gives agents a cl
 ## 60-second demo
 
 ```bash
-docker-compose up -d
+cp .env.example .env
+bash scripts/docker-init.sh
 ```
 
 ```python
@@ -62,4 +63,3 @@ asyncio.run(main())
 - [API reference](api-reference.md)
 - [Docker deployment](deployment/docker.md)
 - [LangGraph multi-agent cookbook](cookbook/multi-agent-shared-memory.md)
-

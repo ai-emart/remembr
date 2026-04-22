@@ -1,52 +1,44 @@
 ---
-name: Bug Report
-about: Report a bug to help us improve
-title: '[BUG] '
+name: Bug report
+about: Report a reproducible problem with Remembr
+title: "[Bug] "
 labels: bug
-assignees: ''
+assignees: ""
 ---
 
-## Description
+## Summary
 
-A clear and concise description of what the bug is.
+Describe the bug in one or two sentences.
 
-## Steps to Reproduce
+## Steps To Reproduce
 
-1. Go to '...'
-2. Click on '...'
-3. Execute '...'
-4. See error
+1. 
+2. 
+3. 
 
-## Expected Behavior
+## Expected Result
 
-A clear and concise description of what you expected to happen.
+What should have happened?
 
-## Actual Behavior
+## Actual Result
 
-A clear and concise description of what actually happened.
+What happened instead?
 
 ## Environment
 
-- **OS**: [e.g., Windows 11, macOS 13, Ubuntu 22.04]
-- **Python Version**: [e.g., 3.11.5]
-- **Remembr Version**: [e.g., 1.0.0]
-- **Framework**: [e.g., LangChain 0.1.0]
-- **Deployment**: [e.g., Railway, Docker, Local]
+- Remembr version:
+- Deployment mode: local Docker / cloud / other
+- OS:
+- Python version:
+- Node version:
+- Adapter or SDK in use:
 
-## Logs
+## Logs Or Screenshots
 
+```text
+Paste stack traces, server logs, or screenshots here.
 ```
-Paste relevant error logs here
-```
-
-## Screenshots
-
-If applicable, add screenshots to help explain your problem.
 
 ## Additional Context
 
-Add any other context about the problem here.
-
-## Possible Solution
-
-If you have suggestions on how to fix the bug, please describe them here.
+Anything else that would help reproduce or debug the problem.

@@ -19,6 +19,8 @@ from app.tasks.webhooks import (
     deliver_webhook,
 )
 
+pytestmark = pytest.mark.integration
+
 
 def _session_factory(db: AsyncSession) -> async_sessionmaker[AsyncSession]:
     return async_sessionmaker(db.bind, class_=AsyncSession, expire_on_commit=False)

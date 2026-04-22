@@ -10,6 +10,8 @@ import pytest
 from app.services.embeddings import EmbeddingProvider, set_embedding_provider_override
 from app.tasks.embeddings import _do_generate_embedding, _mark_failed
 
+pytestmark = pytest.mark.integration
+
 
 class _FakeProvider(EmbeddingProvider):
     def __init__(self, vector=None, raises=None):
