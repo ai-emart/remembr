@@ -49,6 +49,9 @@ yarn-error.log*
 dist/
 *.tsbuildinfo
 
+# MkDocs build output
+site/
+
 # Testing
 .coverage
 .pytest_cache/
