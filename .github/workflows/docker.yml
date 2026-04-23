@@ -29,26 +29,44 @@ jobs:
       - name: Build server image
         run: docker compose -f docker-compose.test.yml build server
 
-      - name: Start test Docker stack
-        run: docker compose -f docker-compose.test.yml up -d --wait postgres redis pgbouncer server
+      - name: Start containers
+        run: docker compose -f docker-compose.test.yml up -d postgres redis pgbouncer
 
-      - name: Capture container logs on failure
-        if: always()
+      - name: Wait for dependencies
         run: |
+          echo "Waiting for postgres..."
+          for i in $(seq 1 30); do
+            if docker compose -f docker-compose.test.yml exec -T postgres pg_isready -U remembr; then
+              break
+            fi
+            sleep 2
+          done
+
+      - name: Build and start server
+        run: docker compose -f docker-compose.test.yml up -d server
+
+      - name: Wait for server and capture immediate logs
+        run: |
+          sleep 15
           echo "=== SERVER LOGS ==="
-          docker compose -f docker-compose.test.yml logs server || true
-          echo "=== POSTGRES LOGS ==="
-          docker compose -f docker-compose.test.yml logs postgres || true
-          echo "=== PGBOUNCER LOGS ==="
-          docker compose -f docker-compose.test.yml logs pgbouncer || true
+          docker compose -f docker-compose.test.yml logs server
           echo "=== CONTAINER STATUS ==="
-          docker compose -f docker-compose.test.yml ps -a || true
+          docker compose -f docker-compose.test.yml ps -a
+
+      - name: Check server health
+        run: |
+          docker compose -f docker-compose.test.yml logs server
+          curl -f http://localhost:8000/health
 
       - name: Run smoke test
-        env:
-          SKIP_COMPOSE: "1"
         run: bash scripts/smoke-test.sh
 
-      - name: Tear down stack
+      - name: Capture logs on failure
+        if: failure()
+        run: |
+          docker compose -f docker-compose.test.yml logs server || true
+          docker compose -f docker-compose.test.yml ps -a || true
+
+      - name: Tear down
         if: always()
         run: docker compose -f docker-compose.test.yml down -v --remove-orphans

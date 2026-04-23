@@ -55,6 +55,7 @@ services:
       context: ./server
       dockerfile: Dockerfile
     container_name: remembr-server
+    restart: "no"
     ports:
       - "8000:8000"
     environment:
