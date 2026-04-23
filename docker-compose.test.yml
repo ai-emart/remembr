@@ -37,7 +37,7 @@ services:
       postgres:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -h localhost -p 6432 -U remembr -d pgbouncer"]
+      test: ["CMD", "nc", "-z", "localhost", "6432"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -63,14 +63,13 @@ services:
     container_name: remembr-server
     ports:
       - "8000:8000"
-    env_file:
-      - .env
     environment:
-      DATABASE_URL: postgresql+asyncpg://remembr:remembr@pgbouncer:6432/remembr
+      DATABASE_URL: postgresql+asyncpg://remembr:remembr@postgres:5432/remembr
       REDIS_URL: redis://redis:6379
       EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-sentence_transformers}
+      SECRET_KEY: ${SECRET_KEY:-test-secret-key}
     depends_on:
-      pgbouncer:
+      postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
