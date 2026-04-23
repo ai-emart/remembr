@@ -32,6 +32,13 @@ jobs:
       - name: Start test Docker stack
         run: docker compose -f docker-compose.test.yml up -d --wait postgres redis pgbouncer server
 
+      - name: Capture container logs on failure
+        if: failure()
+        run: |
+          docker compose -f docker-compose.test.yml logs server
+          docker compose -f docker-compose.test.yml logs postgres
+          docker compose -f docker-compose.test.yml logs pgbouncer
+
       - name: Run smoke test
         env:
           SKIP_COMPOSE: "1"
