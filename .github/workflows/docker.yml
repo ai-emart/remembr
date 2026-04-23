@@ -33,11 +33,16 @@ jobs:
         run: docker compose -f docker-compose.test.yml up -d --wait postgres redis pgbouncer server
 
       - name: Capture container logs on failure
-        if: failure()
+        if: always()
         run: |
-          docker compose -f docker-compose.test.yml logs server
-          docker compose -f docker-compose.test.yml logs postgres
-          docker compose -f docker-compose.test.yml logs pgbouncer
+          echo "=== SERVER LOGS ==="
+          docker compose -f docker-compose.test.yml logs server || true
+          echo "=== POSTGRES LOGS ==="
+          docker compose -f docker-compose.test.yml logs postgres || true
+          echo "=== PGBOUNCER LOGS ==="
+          docker compose -f docker-compose.test.yml logs pgbouncer || true
+          echo "=== CONTAINER STATUS ==="
+          docker compose -f docker-compose.test.yml ps -a || true
 
       - name: Run smoke test
         env:
