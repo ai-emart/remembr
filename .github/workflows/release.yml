@@ -57,7 +57,9 @@ jobs:
       - name: Run unit-only server test suite
         if: runner.os != 'Linux'
         working-directory: server
-        run: pytest --tb=short -m "not integration"
+        run: |
+          python -m pip install greenlet
+          pytest --tb=short -m "not integration"
 
       - name: Tear down services
         if: runner.os == 'Linux' && always()

@@ -156,13 +156,14 @@ class RemembrMemoryBuffer(ChatMemoryBuffer):
         weights: SearchWeights | dict[str, float] | None = None,
         **kwargs: Any,
     ) -> None:
+        chat_store = RemembrChatStore(client)
         object.__setattr__(self, "client", client)
         object.__setattr__(self, "session_id", session_id)
         object.__setattr__(self, "search_limit", search_limit)
         object.__setattr__(self, "search_mode", search_mode)
         object.__setattr__(self, "tag_filters", tag_filters)
         object.__setattr__(self, "weights", weights)
-        object.__setattr__(self, "chat_store", RemembrChatStore(client))
+        object.__setattr__(self, "chat_store", chat_store)
         super().__init__(
             chat_store=chat_store,
             chat_store_key=session_id,

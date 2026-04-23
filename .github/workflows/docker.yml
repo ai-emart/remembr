@@ -24,19 +24,10 @@ jobs:
           } >> .env
 
       - name: Build server image
-        run: docker compose -f docker-compose.yml build server
+        run: docker compose -f docker-compose.test.yml build server
 
       - name: Start test Docker stack
-        run: docker compose -f docker-compose.test.yml up -d postgres redis pgbouncer && docker compose -f docker-compose.yml up -d server
-
-      - name: Wait for services to be healthy
-        run: |
-          for i in {1..30}; do
-            if docker compose -f docker-compose.test.yml ps | grep -q "healthy"; then
-              break
-            fi
-            sleep 2
-          done
+        run: docker compose -f docker-compose.test.yml up -d --wait postgres redis pgbouncer server
 
       - name: Run smoke test
         env:
@@ -45,4 +36,4 @@ jobs:
 
       - name: Tear down stack
         if: always()
-        run: docker compose -f docker-compose.yml down -v --remove-orphans && docker compose -f docker-compose.test.yml down -v --remove-orphans
+        run: docker compose -f docker-compose.test.yml down -v --remove-orphans
