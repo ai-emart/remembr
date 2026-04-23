@@ -58,10 +58,11 @@ services:
     ports:
       - "8000:8000"
     environment:
-      DATABASE_URL: postgresql+asyncpg://remembr:remembr@postgres:5432/remembr
-      REDIS_URL: redis://redis:6379
-      EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-sentence_transformers}
-      SECRET_KEY: ${SECRET_KEY:-test-secret-key}
+      DATABASE_URL: postgresql+asyncpg://remembr:remembr@remembr-test-postgres:5432/remembr
+      REDIS_URL: redis://remembr-test-redis:6379
+      SECRET_KEY: test-secret-key-for-ci-only-not-production
+      EMBEDDING_PROVIDER: sentence_transformers
+      ENVIRONMENT: development
     depends_on:
       postgres:
         condition: service_healthy
@@ -70,6 +71,6 @@ services:
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 10s
-      timeout: 5s
+      timeout: 10s
       retries: 10
-      start_period: 30s
+      start_period: 60s
