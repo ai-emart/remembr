@@ -164,11 +164,18 @@ class RemembrMemoryBuffer(ChatMemoryBuffer):
         object.__setattr__(self, "weights", weights)
         object.__setattr__(self, "chat_store", RemembrChatStore(client))
         super().__init__(
-            chat_store=self.chat_store,
+            chat_store=chat_store,
             chat_store_key=session_id,
             token_limit=token_limit,
             **kwargs,
         )
+        object.__setattr__(self, "client", client)
+        object.__setattr__(self, "session_id", session_id)
+        object.__setattr__(self, "search_limit", search_limit)
+        object.__setattr__(self, "search_mode", search_mode)
+        object.__setattr__(self, "tag_filters", tag_filters)
+        object.__setattr__(self, "weights", weights)
+        object.__setattr__(self, "chat_store", chat_store)
 
     @with_remembr_fallback(default_value=[])
     def get(self, input: str | None = None, **kwargs: Any) -> list[ChatMessage]:
