@@ -41,7 +41,7 @@ fi
 log "Waiting for server health..."
 MAX=40
 for i in $(seq 1 "$MAX"); do
-  if curl -sf "${SERVER_URL}/health" > /dev/null 2>&1; then
+  if curl -sf "${SERVER_URL}/api/v1/health" > /dev/null 2>&1; then
     break
   fi
   if [ "$i" -eq "$MAX" ]; then fail "Server not healthy after ${MAX} attempts"; fi
@@ -51,7 +51,7 @@ done
 # ---------------------------------------------------------------------------
 # 3. Health endpoint
 # ---------------------------------------------------------------------------
-HEALTH=$(curl -sf "${SERVER_URL}/health")
+HEALTH=$(curl -sf "${SERVER_URL}/api/v1/health")
 log "Health response: $HEALTH"
 echo "$HEALTH" | grep -q '"status"' || fail "/health did not return status field"
 pass "/health OK"
