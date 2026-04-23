@@ -137,6 +137,14 @@ class RemembrMemoryBuffer(ChatMemoryBuffer):
         ``add_message`` may not surface them until embedding generation completes.
     """
 
+    client: Any = Field(default=None, exclude=True)
+    session_id: str = Field(default="")
+    search_limit: int = Field(default=20)
+    search_mode: str = Field(default="hybrid")
+    tag_filters: list[TagFilter] | None = Field(default=None)
+    weights: SearchWeights | dict[str, float] | None = Field(default=None, exclude=True)
+    chat_store: Any = Field(default=None, exclude=True)
+
     def __init__(
         self,
         client: "RemembrClient",
@@ -148,13 +156,13 @@ class RemembrMemoryBuffer(ChatMemoryBuffer):
         weights: SearchWeights | dict[str, float] | None = None,
         **kwargs: Any,
     ) -> None:
-        self.client = client
-        self.session_id = session_id
-        self.search_limit = search_limit
-        self.search_mode = search_mode
-        self.tag_filters = tag_filters
-        self.weights = weights
-        self.chat_store = RemembrChatStore(client)
+        object.__setattr__(self, "client", client)
+        object.__setattr__(self, "session_id", session_id)
+        object.__setattr__(self, "search_limit", search_limit)
+        object.__setattr__(self, "search_mode", search_mode)
+        object.__setattr__(self, "tag_filters", tag_filters)
+        object.__setattr__(self, "weights", weights)
+        object.__setattr__(self, "chat_store", RemembrChatStore(client))
         super().__init__(
             chat_store=self.chat_store,
             chat_store_key=session_id,
