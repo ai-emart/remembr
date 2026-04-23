@@ -49,9 +49,7 @@ class SentenceTransformersProvider(EmbeddingProvider):
         )
         return vector, len(vector)
 
-    async def generate_embeddings_batch(
-        self, texts: list[str]
-    ) -> list[tuple[list[float], int]]:
+    async def generate_embeddings_batch(self, texts: list[str]) -> list[tuple[list[float], int]]:
         if not texts:
             return []
         loop = asyncio.get_event_loop()

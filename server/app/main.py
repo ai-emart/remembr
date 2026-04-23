@@ -201,10 +201,7 @@ def create_app() -> FastAPI:
         request_id = getattr(request.state, "request_id", "unknown")
         # Pydantic v2 may embed non-serializable objects in the error ctx (e.g. the
         # original ValueError instance).  Strip ctx before JSON serialization.
-        sanitized = [
-            {k: v for k, v in e.items() if k not in ("ctx", "url")}
-            for e in exc.errors()
-        ]
+        sanitized = [{k: v for k, v in e.items() if k not in ("ctx", "url")} for e in exc.errors()]
         status_code = status.HTTP_422_UNPROCESSABLE_ENTITY
         if any(WEIGHT_SUM_ERROR_MESSAGE in str(item.get("msg", "")) for item in sanitized):
             status_code = status.HTTP_400_BAD_REQUEST

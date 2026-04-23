@@ -39,9 +39,7 @@ class OllamaEmbeddingProvider(EmbeddingProvider):
             logger.debug(f"Ollama embedding generated, dims={len(vector)}")
             return vector, len(vector)
 
-    async def generate_embeddings_batch(
-        self, texts: list[str]
-    ) -> list[tuple[list[float], int]]:
+    async def generate_embeddings_batch(self, texts: list[str]) -> list[tuple[list[float], int]]:
         results = []
         for text in texts:
             results.append(await self.generate_embedding(text))

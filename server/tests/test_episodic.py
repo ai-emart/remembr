@@ -32,9 +32,7 @@ class _FakeProvider(EmbeddingProvider):
     async def generate_embedding(self, text: str) -> tuple[list[float], int]:
         return await self._generate(text)
 
-    async def generate_embeddings_batch(
-        self, texts: list[str]
-    ) -> list[tuple[list[float], int]]:
+    async def generate_embeddings_batch(self, texts: list[str]) -> list[tuple[list[float], int]]:
         return [await self.generate_embedding(t) for t in texts]
 
 
@@ -134,20 +132,24 @@ async def test_search_by_tags_delegates_to_repo(
 
 @pytest.mark.asyncio
 async def test_search_semantic_returns_similarity_results(scope: MemoryScope):
-    row = type("Row", (), dict(
-        id=uuid.uuid4(),
-        org_id=uuid.UUID(scope.org_id),
-        team_id=None,
-        user_id=None,
-        agent_id=None,
-        session_id=None,
-        role="assistant",
-        content="Try marinating the tofu in tamari and ginger.",
-        tags=["cooking"],
-        metadata={"source": "chat"},
-        created_at=datetime(2026, 1, 2, tzinfo=UTC),
-        similarity_score=0.93,
-    ))()
+    row = type(
+        "Row",
+        (),
+        dict(
+            id=uuid.uuid4(),
+            org_id=uuid.UUID(scope.org_id),
+            team_id=None,
+            user_id=None,
+            agent_id=None,
+            session_id=None,
+            role="assistant",
+            content="Try marinating the tofu in tamari and ginger.",
+            tags=["cooking"],
+            metadata={"source": "chat"},
+            created_at=datetime(2026, 1, 2, tzinfo=UTC),
+            similarity_score=0.93,
+        ),
+    )()
 
     fake_db = _FakeDB(rows=[row])
     fake_provider = _FakeProvider(vector=[0.2, 0.4, 0.8])
@@ -170,20 +172,24 @@ async def test_search_semantic_returns_similarity_results(scope: MemoryScope):
 
 @pytest.mark.asyncio
 async def test_search_hybrid_combines_semantic_with_filters(scope: MemoryScope):
-    row = type("Row", (), dict(
-        id=uuid.uuid4(),
-        org_id=uuid.UUID(scope.org_id),
-        team_id=None,
-        user_id=None,
-        agent_id=None,
-        session_id=None,
-        role="assistant",
-        content="Password reset requires identity verification first.",
-        tags=["support", "security"],
-        metadata={"ticket": "abc"},
-        created_at=datetime(2026, 1, 3, tzinfo=UTC),
-        similarity_score=0.88,
-    ))()
+    row = type(
+        "Row",
+        (),
+        dict(
+            id=uuid.uuid4(),
+            org_id=uuid.UUID(scope.org_id),
+            team_id=None,
+            user_id=None,
+            agent_id=None,
+            session_id=None,
+            role="assistant",
+            content="Password reset requires identity verification first.",
+            tags=["support", "security"],
+            metadata={"ticket": "abc"},
+            created_at=datetime(2026, 1, 3, tzinfo=UTC),
+            similarity_score=0.88,
+        ),
+    )()
 
     fake_db = _FakeDB(rows=[row])
     fake_provider = _FakeProvider(vector=[0.1, 0.3, 0.9])
@@ -216,20 +222,24 @@ async def test_search_hybrid_combines_semantic_with_filters(scope: MemoryScope):
 
 @pytest.mark.asyncio
 async def test_search_keyword_uses_tsquery_and_rank(scope: MemoryScope):
-    row = type("Row", (), dict(
-        id=uuid.uuid4(),
-        org_id=uuid.UUID(scope.org_id),
-        team_id=None,
-        user_id=None,
-        agent_id=None,
-        session_id=None,
-        role="assistant",
-        content="SKU ZX-9000 is backordered until Friday.",
-        tags=["inventory"],
-        metadata={"source": "erp"},
-        created_at=datetime(2026, 1, 5, tzinfo=UTC),
-        similarity_score=0.52,
-    ))()
+    row = type(
+        "Row",
+        (),
+        dict(
+            id=uuid.uuid4(),
+            org_id=uuid.UUID(scope.org_id),
+            team_id=None,
+            user_id=None,
+            agent_id=None,
+            session_id=None,
+            role="assistant",
+            content="SKU ZX-9000 is backordered until Friday.",
+            tags=["inventory"],
+            metadata={"source": "erp"},
+            created_at=datetime(2026, 1, 5, tzinfo=UTC),
+            similarity_score=0.52,
+        ),
+    )()
 
     fake_db = _FakeDB(rows=[row])
     svc = EpisodicMemory(db=fake_db)
@@ -251,20 +261,24 @@ async def test_search_keyword_uses_tsquery_and_rank(scope: MemoryScope):
 
 @pytest.mark.asyncio
 async def test_search_hybrid_passes_weight_params(scope: MemoryScope):
-    row = type("Row", (), dict(
-        id=uuid.uuid4(),
-        org_id=uuid.UUID(scope.org_id),
-        team_id=None,
-        user_id=None,
-        agent_id=None,
-        session_id=None,
-        role="assistant",
-        content="Recent but slightly less exact match.",
-        tags=["support"],
-        metadata={},
-        created_at=datetime(2026, 1, 6, tzinfo=UTC),
-        similarity_score=0.67,
-    ))()
+    row = type(
+        "Row",
+        (),
+        dict(
+            id=uuid.uuid4(),
+            org_id=uuid.UUID(scope.org_id),
+            team_id=None,
+            user_id=None,
+            agent_id=None,
+            session_id=None,
+            role="assistant",
+            content="Recent but slightly less exact match.",
+            tags=["support"],
+            metadata={},
+            created_at=datetime(2026, 1, 6, tzinfo=UTC),
+            similarity_score=0.67,
+        ),
+    )()
 
     fake_db = _FakeDB(rows=[row])
     fake_provider = _FakeProvider(vector=[0.2, 0.6, 0.8])
@@ -284,7 +298,9 @@ async def test_reconstruct_state_at_returns_snapshot(
     scope: MemoryScope, monkeypatch: pytest.MonkeyPatch
 ):
     older = type("E", (), {"created_at": datetime(2026, 1, 1, 9, tzinfo=UTC), "id": uuid.uuid4()})()
-    newer = type("E", (), {"created_at": datetime(2026, 1, 1, 15, tzinfo=UTC), "id": uuid.uuid4()})()
+    newer = type(
+        "E", (), {"created_at": datetime(2026, 1, 1, 15, tzinfo=UTC), "id": uuid.uuid4()}
+    )()
 
     mocked_list = AsyncMock(return_value=[newer, older])
     monkeypatch.setattr("app.services.episodic.episode_repo.list_episodes", mocked_list)

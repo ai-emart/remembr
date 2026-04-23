@@ -24,6 +24,7 @@ dependencies = [
     "sentry-sdk[fastapi]>=1.40.0",
     "bcrypt>=4.1.0",
     "pyjwt>=2.8.0",
+    "python-multipart>=0.0.9",
     "tiktoken>=0.7.0",
 ]
 

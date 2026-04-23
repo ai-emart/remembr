@@ -55,6 +55,7 @@ def test_jina_provider_requires_api_key(monkeypatch):
     monkeypatch.delenv("JINA_API_KEY", raising=False)
 
     from app.config import get_settings
+
     get_settings.cache_clear()
     try:
         with pytest.raises((ConfigurationError, Exception)):
@@ -68,6 +69,7 @@ def test_openai_provider_requires_api_key(monkeypatch):
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
 
     from app.config import get_settings
+
     get_settings.cache_clear()
     try:
         with pytest.raises((ConfigurationError, Exception)):
@@ -80,6 +82,7 @@ def test_unknown_provider_raises(monkeypatch):
     monkeypatch.setenv("EMBEDDING_PROVIDER", "unknown_xyz")
 
     from app.config import get_settings
+
     get_settings.cache_clear()
     try:
         with pytest.raises((ConfigurationError, Exception)):

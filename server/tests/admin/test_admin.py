@@ -1,17 +1,19 @@
 """Tests for the dev-only admin UI."""
+
 from __future__ import annotations
 
 import os
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
-from unittest.mock import patch
 
 # Ensure env vars are present before importing the app
-os.environ.setdefault("TEST_DATABASE_URL", "postgresql://postgres:postgres@localhost:5433/remembr_test")
+os.environ.setdefault(
+    "TEST_DATABASE_URL", "postgresql://postgres:postgres@localhost:5433/remembr_test"
+)
 os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
 os.environ.setdefault("SECRET_KEY", "test-secret-key-for-admin-tests")
 os.environ.setdefault("JINA_API_KEY", "test-jina-key")
@@ -23,7 +25,7 @@ from app.main import create_app
 # Shared helpers
 # ---------------------------------------------------------------------------
 
-_NOW = datetime(2026, 1, 15, 12, 0, 0, tzinfo=timezone.utc)
+_NOW = datetime(2026, 1, 15, 12, 0, 0, tzinfo=UTC)
 _ORG_ID = uuid.UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
 _SESS_ID = uuid.UUID("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")
 _EP_ID = uuid.UUID("cccccccc-cccc-cccc-cccc-cccccccccccc")
@@ -84,6 +86,7 @@ def _make_db_mock(org=True, sessions=True, episodes=True):
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def admin_app():
     return create_app()
@@ -99,9 +102,11 @@ def local_client(admin_app):
 # 1. Localhost guard
 # ---------------------------------------------------------------------------
 
+
 def test_admin_rejects_non_localhost():
     """The localhost guard raises 403 for external IPs."""
     from fastapi import HTTPException
+
     from app.admin.router import _guard
 
     mock_req = MagicMock()
@@ -122,7 +127,6 @@ def test_admin_allows_testclient_host(local_client):
         async def override():
             yield db
 
-        from app.db.session import get_db
         from app.admin.router import router  # noqa: F401
 
         # We just check the 403 is NOT returned
@@ -134,6 +138,7 @@ def test_admin_allows_testclient_host(local_client):
 # ---------------------------------------------------------------------------
 # 2. Production guard — admin router must not be mounted in production
 # ---------------------------------------------------------------------------
+
 
 def test_admin_not_available_in_production():
     """Admin router must not be registered when environment=production."""
@@ -155,6 +160,7 @@ def test_admin_not_available_in_production():
 # ---------------------------------------------------------------------------
 # 3. Basic rendering — each page returns 200 + key HTML markers
 # ---------------------------------------------------------------------------
+
 
 def _patched_client(admin_app):
     """Return a TestClient with the DB dependency overridden."""
@@ -238,6 +244,7 @@ def test_health_page_renders(admin_app):
 # 4. HTMX fragment endpoints return HTML, not JSON
 # ---------------------------------------------------------------------------
 
+
 def test_session_detail_returns_html_not_json(admin_app):
     """GET /admin/sessions/{id} must return HTML fragment."""
     client, app = _patched_client(admin_app)
@@ -304,6 +311,7 @@ def test_health_htmx_request_returns_fragment(admin_app):
 # 5. Org resolution — X-Admin-Org-ID header
 # ---------------------------------------------------------------------------
 
+
 def test_custom_org_id_header_is_used(admin_app):
     """When X-Admin-Org-ID is provided, it must be passed to DB queries."""
     from app.db.session import get_db
@@ -330,12 +338,14 @@ def test_custom_org_id_header_is_used(admin_app):
     try:
         client = TestClient(admin_app, raise_server_exceptions=False)
         # Provide a custom org ID — endpoint should use it (not query for first org)
-        response = client.get(
+        client.get(
             "/admin",
             headers={"X-Admin-Org-ID": str(_ORG_ID)},
         )
         # No SELECT on organizations table expected (we gave the header)
         org_queries = [q for q in captured_queries if "organizations" in q.lower()]
-        assert len(org_queries) == 0, "Should not have queried organizations table when header provided"
+        assert len(org_queries) == 0, (
+            "Should not have queried organizations table when header provided"
+        )
     finally:
         admin_app.dependency_overrides.clear()

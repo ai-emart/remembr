@@ -6,7 +6,9 @@ import pytest
 from fastapi.testclient import TestClient
 
 # Set required environment variables before importing app
-os.environ.setdefault("TEST_DATABASE_URL", "postgresql://postgres:postgres@localhost:5433/remembr_test")
+os.environ.setdefault(
+    "TEST_DATABASE_URL", "postgresql://postgres:postgres@localhost:5433/remembr_test"
+)
 os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
 os.environ.setdefault("SECRET_KEY", "test-secret-key-for-health-tests")
 os.environ.setdefault("JINA_API_KEY", "test-jina-key")
@@ -37,7 +39,7 @@ def test_health_check_response_format(client):
     # Response is wrapped in StandardResponse format
     assert "data" in json_response
     data = json_response["data"]
-    
+
     assert "status" in data
     assert "environment" in data
     assert "version" in data
@@ -58,7 +60,7 @@ def test_health_check_environment(client):
     """Test health check returns environment."""
     response = client.get("/api/v1/health")
     json_response = response.json()
-    
+
     # Response is wrapped in StandardResponse format
     assert "data" in json_response
     data = json_response["data"]

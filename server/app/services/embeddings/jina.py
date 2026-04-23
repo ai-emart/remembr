@@ -33,9 +33,7 @@ class JinaEmbeddingProvider(EmbeddingProvider):
         vector = vectors[0]
         return vector, len(vector)
 
-    async def generate_embeddings_batch(
-        self, texts: list[str]
-    ) -> list[tuple[list[float], int]]:
+    async def generate_embeddings_batch(self, texts: list[str]) -> list[tuple[list[float], int]]:
         if not texts:
             return []
         if len(texts) > 2048:

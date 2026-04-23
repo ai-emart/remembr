@@ -69,9 +69,7 @@ async def update_session(
 ) -> Session:
     """Update session metadata."""
     result = await db.execute(
-        select(Session)
-        .where(Session.id == _as_uuid(session_id))
-        .where(Session.not_deleted())
+        select(Session).where(Session.id == _as_uuid(session_id)).where(Session.not_deleted())
     )
     session = result.scalar_one_or_none()
     if session is None:

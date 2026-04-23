@@ -291,6 +291,20 @@ describe('RemembrClient', () => {
           last_delivery_at: null,
           last_delivery_status: null,
           failure_count: 0,
+        },
+      }),
+      jsonResponse({
+        data: {
+          id: 'wh_1',
+          org_id: 'org_1',
+          url: 'https://example.com/hooks-updated',
+          events: ['checkpoint.created'],
+          active: false,
+          created_at: '2026-01-01T00:00:00.000Z',
+          updated_at: '2026-01-02T00:00:00.000Z',
+          last_delivery_at: null,
+          last_delivery_status: null,
+          failure_count: 0,
           secret: 'secret_rotated',
         },
       }),
@@ -326,6 +340,7 @@ describe('RemembrClient', () => {
       events: ['checkpoint.created'],
       active: false,
     });
+    const fetched = await client.webhooks.get('wh_1');
     const rotated = await client.webhooks.rotateSecret('wh_1');
     const deliveries = await client.webhooks.deliveries('wh_1');
     const tested = await client.webhooks.test('wh_1');
@@ -334,9 +349,104 @@ describe('RemembrClient', () => {
     expect(created.secret).toBe('secret_once');
     expect(listed).toHaveLength(1);
     expect(updated.active).toBe(false);
+    expect(fetched.id).toBe('wh_1');
     expect(rotated.secret).toBe('secret_rotated');
     expect(deliveries[0].event).toBe('memory.stored');
     expect(tested.delivery_id).toBe('del_test');
     expect(deleted.deleted).toBe(true);
+  });
+
+  test('webhook validation errors are raised for empty inputs', async () => {
+    const client = new RemembrClient({ apiKey: 'test-key' });
+
+    await expect(
+      client.webhooks.create({
+        url: 'https://example.com/hooks',
+        events: [],
+      })
+    ).rejects.toThrow('events must not be empty');
+
+    await expect(client.webhooks.get('')).rejects.toThrow(
+      'webhookId is required and must be a non-empty string'
+    );
+    await expect(client.webhooks.update('wh_1', { events: [] })).rejects.toThrow(
+      'events must not be empty'
+    );
+    await expect(client.webhooks.deliveries('wh_1', 0)).rejects.toThrow(
+      'limit must be greater than 0'
+    );
+  });
+
+  test('search serializes tagFilters payload', async () => {
+    const mock = installMockFetch(() =>
+      jsonResponse({ data: { request_id: 'r1', total: 0, query_time_ms: 1, results: [] } })
+    );
+
+    const client = new RemembrClient({ apiKey: 'test-key' });
+    await client.search({
+      query: 'tagged',
+      tagFilters: [{ key: 'topic', value: 'ai', op: 'prefix' }, { key: 'priority' }],
+    });
+
+    const body = JSON.parse((mock.calls[0].init?.body as string) ?? '{}');
+    expect(body.tag_filters).toEqual([
+      { key: 'topic', value: 'ai', op: 'prefix' },
+      { key: 'priority', op: 'eq' },
+    ]);
+  });
+
+  test('export handles csv success/failure and json streaming parser', async () => {
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(encoder.encode('{"id":1},{"id":2,"text":"a\\\\\\"b"}'));
+        controller.close();
+      },
+    });
+
+    installSequentialMockFetch([
+      new Response('a,b\\n1,2\\n', { status: 200, headers: { 'Content-Type': 'text/csv' } }),
+      new Response('nope', { status: 500 }),
+      new Response(stream, { status: 200, headers: { 'Content-Type': 'application/json' } }),
+      new Response('error', { status: 500 }),
+      new Response('[]', { status: 200 }),
+    ]);
+
+    const client = new RemembrClient({ apiKey: 'test-key', baseUrl: 'http://localhost:8000' });
+
+    const csvBlob = await client.export({ format: 'csv' });
+    expect(csvBlob).toBeInstanceOf(Blob);
+
+    await expect(client.export({ format: 'csv' })).rejects.toBeInstanceOf(ServerError);
+
+    const jsonStream = await client.export({
+      format: 'json',
+      fromDate: new Date('2026-01-01T00:00:00.000Z'),
+      toDate: new Date('2026-01-02T00:00:00.000Z'),
+      sessionId: 'sess_1',
+      includeDeleted: true,
+    });
+    const rows: Array<Record<string, unknown>> = [];
+    for await (const row of jsonStream as AsyncIterable<Record<string, unknown>>) {
+      rows.push(row);
+    }
+    expect(rows).toEqual([{ id: 1 }]);
+
+    const failingStream = await client.export({ format: 'json' });
+    await expect(
+      (async () => {
+        for await (const _ of failingStream as AsyncIterable<Record<string, unknown>>) {
+          // no-op
+        }
+      })()
+    ).rejects.toBeInstanceOf(ServerError);
+
+  });
+
+  test('requireNonEmpty guards blank identifiers', async () => {
+    const client = new RemembrClient({ apiKey: 'test-key' });
+    await expect(client.getSession('   ')).rejects.toThrow(
+      'sessionId is required and must be a non-empty string'
+    );
   });
 });

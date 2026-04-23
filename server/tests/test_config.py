@@ -5,6 +5,7 @@ from pydantic import SecretStr, ValidationError
 
 from app.config import Settings
 
+
 def test_settings_validation(monkeypatch: pytest.MonkeyPatch):
     """Test that Settings validates required fields when env file loading is disabled."""
     for key in ("DATABASE_URL", "REDIS_URL", "SECRET_KEY"):

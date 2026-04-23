@@ -6,16 +6,15 @@ import csv
 import io
 import json
 import uuid
-from datetime import datetime, timezone
-from typing import AsyncGenerator
-from unittest.mock import AsyncMock, MagicMock, patch
+from collections.abc import AsyncGenerator
+from datetime import UTC, datetime
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from app.api.v1.export import _ep_to_dict, _iter_episodes, _stream_csv, _stream_json
 from app.models.episode import Episode
 from app.services.scoping import MemoryScope
-
 
 # ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -41,7 +40,7 @@ def _make_episode(
     ep.content = content
     ep.tags = tags or []
     ep.metadata_ = metadata or {}
-    ep.created_at = datetime(2026, 1, 15, tzinfo=timezone.utc)
+    ep.created_at = datetime(2026, 1, 15, tzinfo=UTC)
     ep.embedding_status = "ready"
     ep.deleted_at = deleted_at
     return ep
@@ -64,6 +63,7 @@ def _make_db_mock(episodes: list[Episode]) -> AsyncMock:
 
 
 # ── _ep_to_dict ───────────────────────────────────────────────────────────────
+
 
 def test_ep_to_dict_basic():
     ep = _make_episode(content="hello", role="assistant", tags=["a", "b"])
@@ -96,6 +96,7 @@ def test_ep_to_dict_metadata():
 
 
 # ── _stream_json ──────────────────────────────────────────────────────────────
+
 
 @pytest.mark.asyncio
 async def test_stream_json_empty():
@@ -139,6 +140,7 @@ async def test_stream_json_starts_with_bracket():
 
 
 # ── _stream_csv ───────────────────────────────────────────────────────────────
+
 
 @pytest.mark.asyncio
 async def test_stream_csv_has_header():
@@ -194,11 +196,12 @@ async def test_stream_csv_empty_only_header():
     db = _make_db_mock([])
     scope = _scope()
     raw = await _collect_bytes(_stream_csv(db, scope, None, None, None, False))
-    lines = [l for l in raw.decode().splitlines() if l.strip()]
+    lines = [line for line in raw.decode().splitlines() if line.strip()]
     assert len(lines) == 1  # only header
 
 
 # ── _iter_episodes: batching ──────────────────────────────────────────────────
+
 
 @pytest.mark.asyncio
 async def test_iter_episodes_stops_when_batch_less_than_batch_size():
@@ -247,6 +250,7 @@ async def test_iter_episodes_paginates_when_full_batch():
 
 # ── soft-deleted exclusion ────────────────────────────────────────────────────
 
+
 @pytest.mark.asyncio
 async def test_include_deleted_false_calls_not_deleted_filter():
     """When include_deleted=False, the query includes the not_deleted filter."""
@@ -294,6 +298,7 @@ async def test_json_stream_include_deleted_passes_flag():
 
 # ── date filters ──────────────────────────────────────────────────────────────
 
+
 @pytest.mark.asyncio
 async def test_from_date_passed_to_query():
     """from_date is applied as a where clause — verified via execute call count."""
@@ -303,7 +308,7 @@ async def test_from_date_passed_to_query():
     db.execute.return_value = result_mock
 
     scope = _scope()
-    from_date = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    from_date = datetime(2026, 1, 1, tzinfo=UTC)
     _ = [ep async for ep in _iter_episodes(db, scope, from_date, None, None, False)]
 
     assert db.execute.called
@@ -317,13 +322,14 @@ async def test_to_date_passed_to_query():
     db.execute.return_value = result_mock
 
     scope = _scope()
-    to_date = datetime(2026, 12, 31, tzinfo=timezone.utc)
+    to_date = datetime(2026, 12, 31, tzinfo=UTC)
     _ = [ep async for ep in _iter_episodes(db, scope, None, to_date, None, False)]
 
     assert db.execute.called
 
 
 # ── session filter ────────────────────────────────────────────────────────────
+
 
 @pytest.mark.asyncio
 async def test_session_id_filter_applied():
@@ -340,6 +346,7 @@ async def test_session_id_filter_applied():
 
 
 # ── streaming does not load all rows at once ──────────────────────────────────
+
 
 @pytest.mark.asyncio
 async def test_json_streaming_yields_incrementally():

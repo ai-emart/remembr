@@ -292,13 +292,17 @@ def _matches_tag_filters(tags: list[str], filters: list[TagFilter]) -> bool:
             threshold = float(tf.value)  # type: ignore[arg-type]
             found = False
             for t in matching:
-                raw = t[len(prefix):]
+                raw = t[len(prefix) :]
                 try:
                     num = float(raw)
                 except ValueError:
                     continue
-                ops = {"gt": num > threshold, "gte": num >= threshold,
-                       "lt": num < threshold, "lte": num <= threshold}
+                ops = {
+                    "gt": num > threshold,
+                    "gte": num >= threshold,
+                    "lt": num < threshold,
+                    "lte": num <= threshold,
+                }
                 if ops[tf.op]:
                     found = True
                     break
@@ -471,7 +475,8 @@ class MemoryQueryEngine:
                 ]
             if request.tag_filters:
                 filtered = [
-                    ep for ep in filtered
+                    ep
+                    for ep in filtered
                     if _matches_tag_filters(ep.tags or [], request.tag_filters)
                 ]
 
@@ -1091,6 +1096,7 @@ async def restore_memory_episode(
         )
     except ValueError as exc:
         from fastapi import HTTPException
+
         raise HTTPException(
             status_code=status.HTTP_410_GONE,
             detail=f"Grace period expired: {exc}",
@@ -1122,9 +1128,7 @@ async def get_episode_embedding_status(
     from app.error_codes import EPISODE_NOT_FOUND
 
     scope = ScopeResolver.resolve_writable_scope(ScopeResolver.from_request_context(ctx))
-    query = _apply_episode_scope_filters(
-        select(Episode).where(Episode.id == episode_id), scope
-    )
+    query = _apply_episode_scope_filters(select(Episode).where(Episode.id == episode_id), scope)
     result = await db.execute(query)
     episode = result.scalar_one_or_none()
     if episode is None:

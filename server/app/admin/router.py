@@ -1,4 +1,5 @@
 """Dev-only admin UI served at /admin — localhost only, no auth."""
+
 from __future__ import annotations
 
 import uuid
@@ -16,7 +17,7 @@ from app.models.episode import Episode
 from app.models.organization import Organization
 from app.models.session import Session
 
-_HERE = Path(__file__).parent
+_HERE = Path(__file__).resolve().parent
 _TEMPLATES = Jinja2Templates(directory=str(_HERE / "templates"))
 
 _LOCALHOST = {"127.0.0.1", "::1", "localhost", "testclient"}
@@ -27,6 +28,7 @@ router = APIRouter(prefix="/admin", tags=["admin"])
 # ---------------------------------------------------------------------------
 # Localhost guard
 # ---------------------------------------------------------------------------
+
 
 def _guard(request: Request) -> None:
     host = request.client.host if request.client else ""
@@ -40,6 +42,7 @@ _LocalhostGuard = Annotated[None, Depends(_guard)]
 # ---------------------------------------------------------------------------
 # Org resolution
 # ---------------------------------------------------------------------------
+
 
 async def _resolve_org_id(request: Request, db: AsyncSession) -> uuid.UUID:
     header = request.headers.get("X-Admin-Org-ID", "").strip()
@@ -58,6 +61,7 @@ async def _resolve_org_id(request: Request, db: AsyncSession) -> uuid.UUID:
 # ---------------------------------------------------------------------------
 # DB helpers
 # ---------------------------------------------------------------------------
+
 
 async def _list_sessions(
     db: AsyncSession,
@@ -223,8 +227,9 @@ async def admin_index(
     sessions = await _list_sessions(db, org_id, limit=_PER_PAGE)
     total = await _count_sessions(db, org_id)
     return _TEMPLATES.TemplateResponse(
-        "sessions.html",
-        {
+        request=request,
+        name="sessions.html",
+        context={
             "request": request,
             "sessions": sessions,
             "total": total,
@@ -247,8 +252,9 @@ async def sessions_list(
     sessions = await _list_sessions(db, org_id, limit=_PER_PAGE, offset=offset)
     total = await _count_sessions(db, org_id)
     return _TEMPLATES.TemplateResponse(
-        "sessions.html",
-        {
+        request=request,
+        name="sessions.html",
+        context={
             "request": request,
             "sessions": sessions,
             "total": total,
@@ -273,8 +279,9 @@ async def session_detail(
         raise HTTPException(status_code=400, detail="Invalid session ID")
     episodes = await _list_episodes(db, org_id, sid, limit=_PER_PAGE)
     return _TEMPLATES.TemplateResponse(
-        "memories.html",
-        {
+        request=request,
+        name="memories.html",
+        context={
             "request": request,
             "session_id": session_id,
             "episodes": episodes,
@@ -299,8 +306,9 @@ async def memories_more(
         raise HTTPException(status_code=400, detail="Invalid session ID")
     episodes = await _list_episodes(db, org_id, sid, limit=_PER_PAGE, offset=offset)
     return _TEMPLATES.TemplateResponse(
-        "_memory_rows.html",
-        {
+        request=request,
+        name="_memory_rows.html",
+        context={
             "request": request,
             "session_id": session_id,
             "episodes": episodes,
@@ -319,8 +327,9 @@ async def search_page(
     org_id = await _resolve_org_id(request, db)
     sessions = await _list_sessions(db, org_id, limit=200)
     return _TEMPLATES.TemplateResponse(
-        "search.html",
-        {
+        request=request,
+        name="search.html",
+        context={
             "request": request,
             "sessions": sessions,
             "org_id": str(org_id),
@@ -346,8 +355,9 @@ async def search_submit(
             db, org_id, query.strip(), session_filter or None, tag_filter or None
         )
     return _TEMPLATES.TemplateResponse(
-        "_search_results.html",
-        {"request": request, "results": results, "query": query},
+        request=request,
+        name="_search_results.html",
+        context={"request": request, "results": results, "query": query},
     )
 
 
@@ -360,4 +370,6 @@ async def health_page(
     data = await _get_health_data(db)
     is_htmx = "hx-request" in request.headers
     template = "_health_cards.html" if is_htmx else "health.html"
-    return _TEMPLATES.TemplateResponse(template, {"request": request, **data})
+    return _TEMPLATES.TemplateResponse(
+        request=request, name=template, context={"request": request, **data}
+    )
