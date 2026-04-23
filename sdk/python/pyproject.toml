@@ -41,6 +41,7 @@ Documentation = "https://github.com/ai-emart/remembr#readme"
 dev = [
     "pytest>=7.4.0",
     "pytest-asyncio>=0.21.0",
+    "respx>=0.21.0",
     "ruff>=0.3.0",
 ]
 
@@ -57,3 +58,6 @@ remembr = "remembr.cli.main:app"
 
 [tool.setuptools.packages.find]
 include = ["remembr*"]
+
+[tool.pytest.ini_options]
+markers = ["integration: marks tests as integration tests"]

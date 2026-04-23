@@ -39,6 +39,18 @@ except Exception:  # pragma: no cover
         def delete_messages(self, key: str) -> None:
             raise NotImplementedError
 
+        def delete_last_message(self, key: str) -> None:
+            raise NotImplementedError
+
+        def delete_message(self, key: str, idx: int) -> None:
+            raise NotImplementedError
+
+        def get_keys(self) -> list[str]:
+            raise NotImplementedError
+
+        def set_messages(self, key: str, messages: list[ChatMessage]) -> None:
+            raise NotImplementedError
+
     class ChatMemoryBuffer:
         def __init__(self, chat_store: BaseChatStore | None = None, chat_store_key: str | None = None, token_limit: int = 2048, **kwargs: Any) -> None:
             self.chat_store = chat_store
@@ -97,6 +109,20 @@ class RemembrChatStore(BaseChatStore):
 
     def delete_messages(self, key: str) -> None:
         self._run(self.client.forget_session(key))
+
+    def delete_last_message(self, key: str) -> None:
+        raise NotImplementedError(
+            "RemembrChatStore.delete_last_message is not implemented yet."
+        )
+
+    def delete_message(self, key: str, idx: int) -> None:
+        raise NotImplementedError("RemembrChatStore.delete_message is not implemented yet.")
+
+    def get_keys(self) -> list[str]:
+        raise NotImplementedError("RemembrChatStore.get_keys is not implemented yet.")
+
+    def set_messages(self, key: str, messages: list[ChatMessage]) -> None:
+        raise NotImplementedError("RemembrChatStore.set_messages is not implemented yet.")
 
 
 class RemembrMemoryBuffer(ChatMemoryBuffer):

@@ -15,16 +15,16 @@ from app.config import get_settings
 
 settings = get_settings()
 
-_db_url = settings.database_url.get_secret_value().replace(
-    "postgresql://", "postgresql+asyncpg://"
-)
+_db_url = settings.database_url.get_secret_value().replace("postgresql://", "postgresql+asyncpg://")
 
 # PgBouncer transaction-mode pooling requires:
 #   1. NullPool — SQLAlchemy must not hold open connections; pgbouncer owns the pool.
 #   2. statement_cache_size=0 — prepared statements cannot survive transaction boundaries.
-_use_pgbouncer = "pgbouncer" in _db_url.lower() or os.getenv(
-    "USE_PGBOUNCER", ""
-).lower() in {"1", "true", "yes"}
+_use_pgbouncer = "pgbouncer" in _db_url.lower() or os.getenv("USE_PGBOUNCER", "").lower() in {
+    "1",
+    "true",
+    "yes",
+}
 
 _connect_args: dict = {
     "statement_cache_size": 0,

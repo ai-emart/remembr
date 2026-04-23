@@ -43,6 +43,7 @@ def reset_provider():
 
 # ── _do_generate_embedding ────────────────────────────────────────────────────
 
+
 @pytest.mark.asyncio
 async def test_do_generate_embedding_sets_ready_status():
     """Successful embedding stores 'ready' status on the episode."""
@@ -96,6 +97,7 @@ async def test_do_generate_embedding_skips_missing_episode():
 
 # ── _mark_failed ──────────────────────────────────────────────────────────────
 
+
 @pytest.mark.asyncio
 async def test_mark_failed_sets_failed_status():
     """_mark_failed writes 'failed' and the error message to the episode."""
@@ -121,6 +123,7 @@ async def test_mark_failed_sets_failed_status():
 
 
 # ── generate_embedding_for_episode task ───────────────────────────────────────
+
 
 def test_task_marks_failed_after_all_retries():
     """After max_retries exhausted the task sets status='failed'."""

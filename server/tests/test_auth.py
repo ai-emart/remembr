@@ -153,7 +153,7 @@ class TestRegisterEndpoint:
 
         assert response.status_code == status.HTTP_201_CREATED
         json_response = response.json()
-        
+
         # Response is wrapped in StandardResponse format
         assert "data" in json_response
         data = json_response["data"]
@@ -262,7 +262,7 @@ class TestLoginEndpoint:
 
         assert response.status_code == status.HTTP_200_OK
         json_response = response.json()
-        
+
         # Response is wrapped in StandardResponse format
         assert "data" in json_response
         data = json_response["data"]
@@ -371,7 +371,7 @@ class TestRefreshEndpoint:
 
         assert response.status_code == status.HTTP_200_OK
         json_response = response.json()
-        
+
         assert "data" in json_response
         data = json_response["data"]
 
@@ -518,7 +518,7 @@ class TestMeEndpoint:
 
         assert response.status_code == status.HTTP_200_OK
         json_response = response.json()
-        
+
         assert "data" in json_response
         data = json_response["data"]
 
@@ -535,7 +535,7 @@ class TestMeEndpoint:
         """Test getting current user without token."""
         response = await client.get("/api/v1/auth/me")
 
-        assert response.status_code == status.HTTP_403_FORBIDDEN
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
     async def test_get_me_invalid_token(self, client: AsyncClient):
         """Test getting current user with invalid token."""

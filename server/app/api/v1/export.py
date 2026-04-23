@@ -16,8 +16,9 @@ from __future__ import annotations
 import csv
 import io
 import json
+from collections.abc import AsyncGenerator
 from datetime import datetime
-from typing import Annotated, AsyncGenerator
+from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
@@ -116,7 +117,16 @@ async def _stream_csv(
     session_id: UUID | None,
     include_deleted: bool,
 ) -> AsyncGenerator[bytes, None]:
-    fieldnames = ["id", "session_id", "role", "content", "tags", "metadata", "created_at", "embedding_status"]
+    fieldnames = [
+        "id",
+        "session_id",
+        "role",
+        "content",
+        "tags",
+        "metadata",
+        "created_at",
+        "embedding_status",
+    ]
     buf = io.StringIO()
     writer = csv.DictWriter(buf, fieldnames=fieldnames, lineterminator="\n")
     writer.writeheader()

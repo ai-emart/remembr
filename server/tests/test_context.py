@@ -6,10 +6,10 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
+import pytest_asyncio
 from fastapi import Depends, FastAPI
 from fastapi.testclient import TestClient
 
-import pytest_asyncio
 from app.middleware.context import (
     RequestContext,
     get_current_context,

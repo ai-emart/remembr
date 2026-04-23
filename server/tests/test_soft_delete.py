@@ -8,12 +8,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.models import Embedding, Episode, Session
-from app.services.forgetting import ForgettingService, SOFT_DELETE_GRACE_DAYS
+from app.models import Episode, Session
+from app.services.forgetting import ForgettingService
 from app.services.scoping import MemoryScope
 
-
 # ── helpers ───────────────────────────────────────────────────────────────────
+
 
 def _scope(org_id: uuid.UUID | None = None) -> MemoryScope:
     return MemoryScope(org_id=str(org_id or uuid.uuid4()), level="org")
@@ -64,6 +64,7 @@ def _make_service(fake_db: AsyncMock, fake_redis: MagicMock | None = None) -> Fo
 
 # ── SoftDeleteMixin ───────────────────────────────────────────────────────────
 
+
 def test_soft_delete_mixin_not_deleted_expression():
     """not_deleted() returns a SQLAlchemy expression that filters deleted_at IS NULL."""
     expr = Episode.not_deleted()
@@ -74,6 +75,7 @@ def test_soft_delete_mixin_not_deleted_expression():
 
 # ── Soft-delete visibility ─────────────────────────────────────────────────────
 
+
 @pytest.mark.asyncio
 async def test_soft_deleted_episode_invisible_to_reads():
     """Soft-deleted episode is excluded by not_deleted() filter."""
@@ -81,10 +83,12 @@ async def test_soft_deleted_episode_invisible_to_reads():
     ep.deleted_at = datetime.now(UTC)
 
     fake_db = AsyncMock()
-    fake_db.begin = MagicMock(return_value=AsyncMock(
-        __aenter__=AsyncMock(return_value=None),
-        __aexit__=AsyncMock(return_value=False),
-    ))
+    fake_db.begin = MagicMock(
+        return_value=AsyncMock(
+            __aenter__=AsyncMock(return_value=None),
+            __aexit__=AsyncMock(return_value=False),
+        )
+    )
     # Simulate: first scalar_one_or_none → None (scope filter includes not_deleted())
     fake_db.execute.return_value = MagicMock(scalar_one_or_none=MagicMock(return_value=None))
 
@@ -105,7 +109,9 @@ async def test_soft_delete_sets_deleted_at():
     ep = _make_episode()
     ep.deleted_at = None
 
-    ctx_mgr = AsyncMock(__aenter__=AsyncMock(return_value=None), __aexit__=AsyncMock(return_value=False))
+    ctx_mgr = AsyncMock(
+        __aenter__=AsyncMock(return_value=None), __aexit__=AsyncMock(return_value=False)
+    )
     fake_db = AsyncMock()
     fake_db.begin = MagicMock(return_value=ctx_mgr)
     # First execute: select episode → returns ep
@@ -133,12 +139,15 @@ async def test_soft_delete_sets_deleted_at():
 
 # ── Hard delete ───────────────────────────────────────────────────────────────
 
+
 @pytest.mark.asyncio
 async def test_hard_delete_removes_episode():
     """hard_delete_episode calls db.delete() and returns True."""
     ep = _make_episode()
 
-    ctx_mgr = AsyncMock(__aenter__=AsyncMock(return_value=None), __aexit__=AsyncMock(return_value=False))
+    ctx_mgr = AsyncMock(
+        __aenter__=AsyncMock(return_value=None), __aexit__=AsyncMock(return_value=False)
+    )
     fake_db = AsyncMock()
     fake_db.begin = MagicMock(return_value=ctx_mgr)
     fake_db.execute.side_effect = [
@@ -162,7 +171,9 @@ async def test_hard_delete_removes_episode():
 @pytest.mark.asyncio
 async def test_hard_delete_returns_false_when_not_found():
     """hard_delete_episode returns False when episode doesn't exist."""
-    ctx_mgr = AsyncMock(__aenter__=AsyncMock(return_value=None), __aexit__=AsyncMock(return_value=False))
+    ctx_mgr = AsyncMock(
+        __aenter__=AsyncMock(return_value=None), __aexit__=AsyncMock(return_value=False)
+    )
     fake_db = AsyncMock()
     fake_db.begin = MagicMock(return_value=ctx_mgr)
     fake_db.execute.return_value = MagicMock(scalar_one_or_none=MagicMock(return_value=None))
@@ -179,13 +190,16 @@ async def test_hard_delete_returns_false_when_not_found():
 
 # ── Restore ────────────────────────────────────────────────────────────────────
 
+
 @pytest.mark.asyncio
 async def test_restore_within_grace_period():
     """restore_episode clears deleted_at when within 30 days."""
     ep = _make_episode()
     ep.deleted_at = datetime.now(UTC) - timedelta(days=5)
 
-    ctx_mgr = AsyncMock(__aenter__=AsyncMock(return_value=None), __aexit__=AsyncMock(return_value=False))
+    ctx_mgr = AsyncMock(
+        __aenter__=AsyncMock(return_value=None), __aexit__=AsyncMock(return_value=False)
+    )
     fake_db = AsyncMock()
     fake_db.begin = MagicMock(return_value=ctx_mgr)
     fake_db.execute.side_effect = [
@@ -212,7 +226,9 @@ async def test_restore_raises_after_grace_period():
     ep = _make_episode()
     ep.deleted_at = datetime.now(UTC) - timedelta(days=31)
 
-    ctx_mgr = AsyncMock(__aenter__=AsyncMock(return_value=None), __aexit__=AsyncMock(return_value=False))
+    ctx_mgr = AsyncMock(
+        __aenter__=AsyncMock(return_value=None), __aexit__=AsyncMock(return_value=False)
+    )
     fake_db = AsyncMock()
     fake_db.begin = MagicMock(return_value=ctx_mgr)
     fake_db.execute.return_value = MagicMock(scalar_one_or_none=MagicMock(return_value=ep))
@@ -231,7 +247,9 @@ async def test_restore_raises_after_grace_period():
 @pytest.mark.asyncio
 async def test_restore_returns_none_when_not_found():
     """restore_episode returns None when the episode row doesn't exist."""
-    ctx_mgr = AsyncMock(__aenter__=AsyncMock(return_value=None), __aexit__=AsyncMock(return_value=False))
+    ctx_mgr = AsyncMock(
+        __aenter__=AsyncMock(return_value=None), __aexit__=AsyncMock(return_value=False)
+    )
     fake_db = AsyncMock()
     fake_db.begin = MagicMock(return_value=ctx_mgr)
     fake_db.execute.return_value = MagicMock(scalar_one_or_none=MagicMock(return_value=None))
@@ -248,6 +266,7 @@ async def test_restore_returns_none_when_not_found():
 
 # ── Cascading soft-delete ─────────────────────────────────────────────────────
 
+
 @pytest.mark.asyncio
 async def test_delete_session_memories_marks_episodes_and_embeddings():
     """delete_session_memories issues UPDATE on both episodes and embeddings."""
@@ -255,7 +274,9 @@ async def test_delete_session_memories_marks_episodes_and_embeddings():
     org_id = uuid.uuid4()
     scoped_sess = _make_session(org_id=org_id)
 
-    ctx_mgr = AsyncMock(__aenter__=AsyncMock(return_value=None), __aexit__=AsyncMock(return_value=False))
+    ctx_mgr = AsyncMock(
+        __aenter__=AsyncMock(return_value=None), __aexit__=AsyncMock(return_value=False)
+    )
     fake_db = AsyncMock()
     fake_db.begin = MagicMock(return_value=ctx_mgr)
 
@@ -284,8 +305,6 @@ async def test_delete_session_memories_marks_episodes_and_embeddings():
 
     assert count == 3
     assert restorable > datetime.now(UTC)
-    # Two UPDATE statements were issued (embeddings + episodes)
-    update_calls = [c for c in fake_db.execute.call_args_list if "update" in str(c).lower() or True]
     assert fake_db.execute.call_count == 4
 
 
@@ -295,14 +314,16 @@ async def test_delete_user_memories_cascades_to_sessions_episodes_embeddings():
     org_id = uuid.uuid4()
     user_id = uuid.uuid4()
 
-    ctx_mgr = AsyncMock(__aenter__=AsyncMock(return_value=None), __aexit__=AsyncMock(return_value=False))
+    ctx_mgr = AsyncMock(
+        __aenter__=AsyncMock(return_value=None), __aexit__=AsyncMock(return_value=False)
+    )
     fake_db = AsyncMock()
     fake_db.begin = MagicMock(return_value=ctx_mgr)
 
     # Calls: count episodes, count sessions, update embeddings, update episodes, update sessions
     fake_db.execute.side_effect = [
-        MagicMock(scalar_one=MagicMock(return_value=5)),   # episodes count
-        MagicMock(scalar_one=MagicMock(return_value=2)),   # sessions count
+        MagicMock(scalar_one=MagicMock(return_value=5)),  # episodes count
+        MagicMock(scalar_one=MagicMock(return_value=2)),  # sessions count
         MagicMock(),  # update embeddings
         MagicMock(),  # update episodes
         MagicMock(),  # update sessions
@@ -322,6 +343,7 @@ async def test_delete_user_memories_cascades_to_sessions_episodes_embeddings():
 
 
 # ── Purge task ────────────────────────────────────────────────────────────────
+
 
 @pytest.mark.asyncio
 async def test_purge_deletes_only_expired_rows():

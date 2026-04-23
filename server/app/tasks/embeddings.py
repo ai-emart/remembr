@@ -64,9 +64,7 @@ async def _do_generate_embedding(episode_id: str) -> None:
             )
             raise
 
-        result = await db.execute(
-            select(Embedding).where(Embedding.episode_id == episode.id)
-        )
+        result = await db.execute(select(Embedding).where(Embedding.episode_id == episode.id))
         existing = result.scalar_one_or_none()
 
         if existing:
@@ -152,9 +150,7 @@ def generate_embedding_for_episode(self, episode_id: str) -> None:
             try:
                 _run_async(_mark_failed(episode_id, repr(exc)[:500]))
             except Exception:
-                logger.exception(
-                    "Could not record embedding failure in DB", episode_id=episode_id
-                )
+                logger.exception("Could not record embedding failure in DB", episode_id=episode_id)
         else:
-            countdown = 2 ** self.request.retries
+            countdown = 2**self.request.retries
             raise self.retry(exc=exc, countdown=countdown)

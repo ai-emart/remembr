@@ -40,6 +40,5 @@ class WebhookDelivery(Base, UUIDMixin):
 
     def __repr__(self) -> str:
         return (
-            f"<WebhookDelivery(id={self.id}, webhook_id={self.webhook_id}, "
-            f"status={self.status})>"
+            f"<WebhookDelivery(id={self.id}, webhook_id={self.webhook_id}, status={self.status})>"
         )

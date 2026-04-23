@@ -405,9 +405,7 @@ class ForgettingService:
                 if episode is None:
                     return False
 
-                await self.db.execute(
-                    delete(Embedding).where(Embedding.episode_id == episode_id)
-                )
+                await self.db.execute(delete(Embedding).where(Embedding.episode_id == episode_id))
                 await self.db.delete(episode)
 
             logger.warning(
@@ -489,9 +487,7 @@ class ForgettingService:
                         )
                     )
                 )
-                await self.db.execute(
-                    delete(Episode).where(Episode.session_id == session_id)
-                )
+                await self.db.execute(delete(Episode).where(Episode.session_id == session_id))
 
                 cache = CacheService(self.redis)
                 await cache.delete(make_key("short_term", str(session_id), "window"))

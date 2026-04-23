@@ -26,9 +26,7 @@ def test_dimensions_is_none(provider):
 async def test_generate_embedding_returns_vector(provider):
     mock_response = MagicMock()
     mock_response.status_code = 200
-    mock_response.json.return_value = {
-        "data": [{"embedding": [0.1, 0.2, 0.3]}]
-    }
+    mock_response.json.return_value = {"data": [{"embedding": [0.1, 0.2, 0.3]}]}
 
     with patch("httpx.AsyncClient") as mock_client_cls:
         mock_client = AsyncMock()

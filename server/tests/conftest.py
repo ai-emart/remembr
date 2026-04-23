@@ -17,7 +17,9 @@ pytest_plugins = ("pytest_asyncio",)
 
 
 os.environ.setdefault("DATABASE_URL", "postgresql://postgres:postgres@localhost:5433/remembr_test")
-os.environ.setdefault("TEST_DATABASE_URL", "postgresql://postgres:postgres@localhost:5433/remembr_test")
+os.environ.setdefault(
+    "TEST_DATABASE_URL", "postgresql://postgres:postgres@localhost:5433/remembr_test"
+)
 os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
 os.environ.setdefault("SECRET_KEY", "test-secret-key")
 os.environ.setdefault("JINA_API_KEY", "test-jina-key")
