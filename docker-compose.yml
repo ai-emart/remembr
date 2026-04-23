@@ -56,12 +56,6 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    healthcheck:
-      test: ["CMD", "sh", "-c", "nc -z localhost 6432 || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 10s
 
   # ---------------------------------------------------------------------------
   # Redis — Short-term memory cache and rate limiting
@@ -134,7 +128,7 @@ services:
       OLLAMA_EMBEDDING_MODEL: ${OLLAMA_EMBEDDING_MODEL:-nomic-embed-text}
     depends_on:
       pgbouncer:
-        condition: service_healthy
+        condition: service_started
       redis:
         condition: service_healthy
       ollama:
@@ -187,7 +181,7 @@ services:
       OLLAMA_EMBEDDING_MODEL: ${OLLAMA_EMBEDDING_MODEL:-nomic-embed-text}
     depends_on:
       pgbouncer:
-        condition: service_healthy
+        condition: service_started
       redis:
         condition: service_healthy
       ollama:
