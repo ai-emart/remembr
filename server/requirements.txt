@@ -15,6 +15,7 @@ loguru>=0.7.0
 sentry-sdk[fastapi]>=1.40.0
 bcrypt>=4.1.0
 pyjwt>=2.8.0
+python-multipart>=0.0.9
 
 slowapi>=0.1.9
 email-validator
