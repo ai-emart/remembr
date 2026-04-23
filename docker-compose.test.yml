@@ -63,7 +63,7 @@ services:
       REDIS_URL: redis://remembr-test-redis:6379
       SECRET_KEY: test-secret-key-for-ci-only-not-production
       EMBEDDING_PROVIDER: sentence_transformers
-      ENVIRONMENT: development
+      ENVIRONMENT: local
     depends_on:
       postgres:
         condition: service_healthy
