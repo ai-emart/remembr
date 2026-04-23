@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from remembr import SearchWeights, TagFilter
+from pydantic import Field
 
 from adapters.base.error_handling import with_remembr_fallback
 from adapters.base.remembr_adapter_base import BaseRemembrAdapter
@@ -61,8 +62,11 @@ except Exception:  # pragma: no cover
 class RemembrChatStore(BaseChatStore):
     """Drop-in chat store where keys map directly to Remembr session IDs."""
 
-    def __init__(self, client: "RemembrClient") -> None:
-        self.client = client
+    client: Any = Field(default=None, exclude=True)
+
+    def __init__(self, client: "RemembrClient", **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+        object.__setattr__(self, "client", client)
 
     @staticmethod
     def _run(coro: Any) -> Any:

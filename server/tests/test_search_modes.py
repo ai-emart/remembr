@@ -92,6 +92,7 @@ async def test_search_weights_model_rejects_invalid_total():
 
 
 @pytest.mark.asyncio
+@pytest.mark.integration
 async def test_invalid_weights_return_400(client, db):
     from app.services.auth import create_access_token
 
@@ -122,6 +123,7 @@ async def test_invalid_weights_return_400(client, db):
 
 
 @pytest.mark.asyncio
+@pytest.mark.integration
 async def test_search_modes_cover_keyword_semantic_hybrid_and_recency(db):
     org = Organization(name="Search Fixture Org")
     db.add(org)

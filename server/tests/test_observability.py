@@ -96,6 +96,7 @@ async def test_setup_otel_disabled_exports_nothing(monkeypatch: pytest.MonkeyPat
 
 
 @pytest.mark.asyncio
+@pytest.mark.integration
 async def test_memory_search_span_has_expected_attributes(
     db: AsyncSession,
     monkeypatch: pytest.MonkeyPatch,
@@ -148,6 +149,7 @@ async def test_memory_search_span_has_expected_attributes(
 
 
 @pytest.mark.asyncio
+@pytest.mark.integration
 async def test_metrics_increment_on_store_search_and_delete(
     db: AsyncSession,
     monkeypatch: pytest.MonkeyPatch,

@@ -207,6 +207,7 @@ class TestMatchesTagFilters:
 
 
 @pytest.mark.asyncio
+@pytest.mark.integration
 async def test_tag_filter_bad_numeric_returns_422(client):
     """Sending op='gt' with a non-numeric value should produce a 422."""
     import uuid as _uuid
