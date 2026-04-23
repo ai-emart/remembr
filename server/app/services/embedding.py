@@ -22,9 +22,7 @@ class EmbeddingService:
     async def generate_embedding(self, text: str) -> tuple[list[float], int]:
         return await self._provider.generate_embedding(text)
 
-    async def generate_embeddings_batch(
-        self, texts: list[str]
-    ) -> list[tuple[list[float], int]]:
+    async def generate_embeddings_batch(self, texts: list[str]) -> list[tuple[list[float], int]]:
         return await self._provider.generate_embeddings_batch(texts)
 
     @staticmethod

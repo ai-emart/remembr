@@ -123,6 +123,8 @@ def setup_rate_limiting(app) -> None:
     try:
         from redis.exceptions import (
             ConnectionError as RedisConnectionError,
+        )
+        from redis.exceptions import (
             TimeoutError as RedisTimeoutError,
         )
 

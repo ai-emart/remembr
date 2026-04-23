@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from remembr import SearchWeights, TagFilter
+from pydantic import Field
 
 from adapters.base.error_handling import with_remembr_fallback
 from adapters.base.remembr_adapter_base import BaseRemembrAdapter
@@ -39,6 +40,18 @@ except Exception:  # pragma: no cover
         def delete_messages(self, key: str) -> None:
             raise NotImplementedError
 
+        def delete_last_message(self, key: str) -> None:
+            raise NotImplementedError
+
+        def delete_message(self, key: str, idx: int) -> None:
+            raise NotImplementedError
+
+        def get_keys(self) -> list[str]:
+            raise NotImplementedError
+
+        def set_messages(self, key: str, messages: list[ChatMessage]) -> None:
+            raise NotImplementedError
+
     class ChatMemoryBuffer:
         def __init__(self, chat_store: BaseChatStore | None = None, chat_store_key: str | None = None, token_limit: int = 2048, **kwargs: Any) -> None:
             self.chat_store = chat_store
@@ -49,8 +62,11 @@ except Exception:  # pragma: no cover
 class RemembrChatStore(BaseChatStore):
     """Drop-in chat store where keys map directly to Remembr session IDs."""
 
-    def __init__(self, client: "RemembrClient") -> None:
-        self.client = client
+    client: Any = Field(default=None, exclude=True)
+
+    def __init__(self, client: "RemembrClient", **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+        object.__setattr__(self, "client", client)
 
     @staticmethod
     def _run(coro: Any) -> Any:
@@ -98,6 +114,20 @@ class RemembrChatStore(BaseChatStore):
     def delete_messages(self, key: str) -> None:
         self._run(self.client.forget_session(key))
 
+    def delete_last_message(self, key: str) -> None:
+        raise NotImplementedError(
+            "RemembrChatStore.delete_last_message is not implemented yet."
+        )
+
+    def delete_message(self, key: str, idx: int) -> None:
+        raise NotImplementedError("RemembrChatStore.delete_message is not implemented yet.")
+
+    def get_keys(self) -> list[str]:
+        raise NotImplementedError("RemembrChatStore.get_keys is not implemented yet.")
+
+    def set_messages(self, key: str, messages: list[ChatMessage]) -> None:
+        raise NotImplementedError("RemembrChatStore.set_messages is not implemented yet.")
+
 
 class RemembrMemoryBuffer(ChatMemoryBuffer):
     """Memory buffer that retrieves relevant context from Remembr.
@@ -106,6 +136,14 @@ class RemembrMemoryBuffer(ChatMemoryBuffer):
         Newly stored messages may have ``embedding_status="pending"``. Immediate retrieval after
         ``add_message`` may not surface them until embedding generation completes.
     """
+
+    client: Any = Field(default=None, exclude=True)
+    session_id: str = Field(default="")
+    search_limit: int = Field(default=20)
+    search_mode: str = Field(default="hybrid")
+    tag_filters: list[TagFilter] | None = Field(default=None)
+    weights: SearchWeights | dict[str, float] | None = Field(default=None, exclude=True)
+    chat_store: Any = Field(default=None, exclude=True)
 
     def __init__(
         self,
@@ -118,19 +156,20 @@ class RemembrMemoryBuffer(ChatMemoryBuffer):
         weights: SearchWeights | dict[str, float] | None = None,
         **kwargs: Any,
     ) -> None:
-        self.client = client
-        self.session_id = session_id
-        self.search_limit = search_limit
-        self.search_mode = search_mode
-        self.tag_filters = tag_filters
-        self.weights = weights
-        self.chat_store = RemembrChatStore(client)
+        chat_store = RemembrChatStore(client)
         super().__init__(
-            chat_store=self.chat_store,
+            chat_store=chat_store,
             chat_store_key=session_id,
             token_limit=token_limit,
             **kwargs,
         )
+        object.__setattr__(self, "client", client)
+        object.__setattr__(self, "session_id", session_id)
+        object.__setattr__(self, "search_limit", search_limit)
+        object.__setattr__(self, "search_mode", search_mode)
+        object.__setattr__(self, "tag_filters", tag_filters)
+        object.__setattr__(self, "weights", weights)
+        object.__setattr__(self, "chat_store", chat_store)
 
     @with_remembr_fallback(default_value=[])
     def get(self, input: str | None = None, **kwargs: Any) -> list[ChatMessage]:

@@ -15,12 +15,11 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
-from typing import Callable
+from collections.abc import Callable
 
 from loguru import logger
 from starlette.requests import Request
 from starlette.responses import Response
-from starlette.types import ASGIApp
 
 IDEMPOTENCY_TTL_SECONDS = 86_400  # 24 hours
 IDEMPOTENCY_METHODS = {"POST", "PUT", "PATCH"}
@@ -67,6 +66,7 @@ async def idempotency_middleware(request: Request, call_next: Callable) -> Respo
     redis = None
     try:
         from app.db.redis import get_redis_client
+
         redis = get_redis_client()
     except RuntimeError:
         # Redis unavailable — fail open

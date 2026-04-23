@@ -36,9 +36,7 @@ class _MappedProvider(EmbeddingProvider):
         vector = self._vectors[text]
         return vector, len(vector)
 
-    async def generate_embeddings_batch(
-        self, texts: list[str]
-    ) -> list[tuple[list[float], int]]:
+    async def generate_embeddings_batch(self, texts: list[str]) -> list[tuple[list[float], int]]:
         return [await self.generate_embedding(text) for text in texts]
 
 
@@ -94,6 +92,7 @@ async def test_search_weights_model_rejects_invalid_total():
 
 
 @pytest.mark.asyncio
+@pytest.mark.integration
 async def test_invalid_weights_return_400(client, db):
     from app.services.auth import create_access_token
 
@@ -124,6 +123,7 @@ async def test_invalid_weights_return_400(client, db):
 
 
 @pytest.mark.asyncio
+@pytest.mark.integration
 async def test_search_modes_cover_keyword_semantic_hybrid_and_recency(db):
     org = Organization(name="Search Fixture Org")
     db.add(org)
@@ -270,7 +270,9 @@ async def test_search_modes_cover_keyword_semantic_hybrid_and_recency(db):
         _Scenario(query="ZX-9000", expected_episode_id=str(keyword_sku.id)),
         _Scenario(query="help me sign in again", expected_episode_id=str(semantic_login.id)),
         _Scenario(query="plant based protein sauce", expected_episode_id=str(semantic_tofu.id)),
-        _Scenario(query="recent billing close issue ERR_5501", expected_episode_id=str(hybrid_recent.id)),
+        _Scenario(
+            query="recent billing close issue ERR_5501", expected_episode_id=str(hybrid_recent.id)
+        ),
     ]
 
     hybrid_hits = 0
@@ -286,7 +288,9 @@ async def test_search_modes_cover_keyword_semantic_hybrid_and_recency(db):
         )
         keyword = await memory.search_keyword(scope=scope, query=scenario.query, limit=5)
 
-        hybrid_hits += int(bool(hybrid) and str(hybrid[0].episode.id) == scenario.expected_episode_id)
+        hybrid_hits += int(
+            bool(hybrid) and str(hybrid[0].episode.id) == scenario.expected_episode_id
+        )
         semantic_hits_count += int(
             bool(semantic) and str(semantic[0].episode.id) == scenario.expected_episode_id
         )
@@ -304,7 +308,9 @@ async def test_search_modes_cover_keyword_semantic_hybrid_and_recency(db):
         limit=5,
         weights=SearchWeights(semantic=0.1, keyword=0.1, recency=0.8),
     )
-    keyword_ranking = await memory.search_keyword(scope=scope, query="recent support ranking", limit=5)
+    keyword_ranking = await memory.search_keyword(
+        scope=scope, query="recent support ranking", limit=5
+    )
 
     assert recency_heavy[0].episode.id == recent_good.id
     assert keyword_ranking[0].episode.id == old_perfect.id

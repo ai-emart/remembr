@@ -35,9 +35,7 @@ class _FakeEmbeddingProvider(EmbeddingProvider):
     async def generate_embedding(self, text: str) -> tuple[list[float], int]:
         return [0.1, 0.2, 0.3], 3
 
-    async def generate_embeddings_batch(
-        self, texts: list[str]
-    ) -> list[tuple[list[float], int]]:
+    async def generate_embeddings_batch(self, texts: list[str]) -> list[tuple[list[float], int]]:
         return [([0.1, 0.2, 0.3], 3) for _ in texts]
 
 
@@ -98,6 +96,7 @@ async def test_setup_otel_disabled_exports_nothing(monkeypatch: pytest.MonkeyPat
 
 
 @pytest.mark.asyncio
+@pytest.mark.integration
 async def test_memory_search_span_has_expected_attributes(
     db: AsyncSession,
     monkeypatch: pytest.MonkeyPatch,
@@ -150,6 +149,7 @@ async def test_memory_search_span_has_expected_attributes(
 
 
 @pytest.mark.asyncio
+@pytest.mark.integration
 async def test_metrics_increment_on_store_search_and_delete(
     db: AsyncSession,
     monkeypatch: pytest.MonkeyPatch,
@@ -236,5 +236,7 @@ async def test_metrics_increment_on_store_search_and_delete(
 
     after = _metric_totals()
 
-    assert after["remembr_memories_stored_total"] >= before.get("remembr_memories_stored_total", 0) + 1
+    assert (
+        after["remembr_memories_stored_total"] >= before.get("remembr_memories_stored_total", 0) + 1
+    )
     assert after["remembr_searches_total"] >= before.get("remembr_searches_total", 0) + 1

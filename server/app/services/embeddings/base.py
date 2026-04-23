@@ -23,7 +23,5 @@ class EmbeddingProvider(ABC):
         """Return (vector, dimensions) for a single text."""
 
     @abstractmethod
-    async def generate_embeddings_batch(
-        self, texts: list[str]
-    ) -> list[tuple[list[float], int]]:
+    async def generate_embeddings_batch(self, texts: list[str]) -> list[tuple[list[float], int]]:
         """Return list of (vector, dimensions) for multiple texts."""

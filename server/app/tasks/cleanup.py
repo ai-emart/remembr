@@ -30,19 +30,13 @@ async def _do_purge_soft_deleted() -> dict:
 
     async with AsyncSessionLocal() as db:
         async with db.begin():
-            emb_result = await db.execute(
-                delete(Embedding).where(Embedding.deleted_at < cutoff)
-            )
+            emb_result = await db.execute(delete(Embedding).where(Embedding.deleted_at < cutoff))
             results["embeddings"] = emb_result.rowcount
 
-            ep_result = await db.execute(
-                delete(Episode).where(Episode.deleted_at < cutoff)
-            )
+            ep_result = await db.execute(delete(Episode).where(Episode.deleted_at < cutoff))
             results["episodes"] = ep_result.rowcount
 
-            sess_result = await db.execute(
-                delete(Session).where(Session.deleted_at < cutoff)
-            )
+            sess_result = await db.execute(delete(Session).where(Session.deleted_at < cutoff))
             results["sessions"] = sess_result.rowcount
 
     logger.info(

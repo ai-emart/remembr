@@ -20,7 +20,7 @@ class TagFilter(BaseModel):
     op: Literal["eq", "ne", "gt", "gte", "lt", "lte", "exists", "prefix"] = "eq"
 
     @model_validator(mode="after")
-    def _validate_numeric_ops(self) -> "TagFilter":
+    def _validate_numeric_ops(self) -> TagFilter:
         if self.op in ("gt", "gte", "lt", "lte"):
             if self.value is None:
                 raise ValueError(f"op={self.op!r} requires a numeric value (key={self.key!r})")
@@ -61,10 +61,10 @@ def build_tag_filter_sql(
     params: dict[str, object] = {}
 
     for i, tf in enumerate(filters):
-        prefix_param = f"_tf{i}p"   # 'key:' string for LIKE prefix match
+        prefix_param = f"_tf{i}p"  # 'key:' string for LIKE prefix match
         pattern_param = f"_tf{i}r"  # '^key:(.+)$' regexp for numeric extraction
-        exact_param = f"_tf{i}v"    # exact 'key:value' string
-        num_param = f"_tf{i}n"      # numeric value for gt/gte/lt/lte
+        exact_param = f"_tf{i}v"  # exact 'key:value' string
+        num_param = f"_tf{i}n"  # numeric value for gt/gte/lt/lte
 
         key_prefix = f"{tf.key}:"
 
@@ -88,8 +88,7 @@ def build_tag_filter_sql(
             else:
                 params[exact_param] = f"{tf.key}:{tf.value}"
                 exists = (
-                    f"EXISTS (SELECT 1 FROM unnest({alias}.tags) AS _t"
-                    f" WHERE _t = :{exact_param})"
+                    f"EXISTS (SELECT 1 FROM unnest({alias}.tags) AS _t WHERE _t = :{exact_param})"
                 )
                 parts.append(exists if tf.op == "eq" else f"NOT ({exists})")
 

@@ -3,9 +3,9 @@
 import uuid
 
 import pytest
+import pytest_asyncio
 from httpx import AsyncClient
 
-import pytest_asyncio
 from app.models.organization import Organization
 from app.models.user import User
 from app.services.api_keys import create_api_key

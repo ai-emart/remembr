@@ -3,15 +3,12 @@
 from __future__ import annotations
 
 import base64
-import hashlib
 import json
-import uuid
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from starlette.requests import Request
-from starlette.responses import Response, StreamingResponse
-from starlette.testclient import TestClient
+from starlette.responses import StreamingResponse
 
 from app.middleware.idempotency import (
     IDEMPOTENCY_TTL_SECONDS,
@@ -21,8 +18,8 @@ from app.middleware.idempotency import (
     idempotency_middleware,
 )
 
-
 # ── helpers ───────────────────────────────────────────────────────────────────
+
 
 def _make_scope():
     """Return a minimal ASGI scope dict."""
@@ -81,6 +78,7 @@ async def _plain_400(request: Request) -> StreamingResponse:
 
 # ── cache key helpers ─────────────────────────────────────────────────────────
 
+
 def test_tenant_token_is_deterministic():
     request = _make_request(auth="Bearer abc123")
     assert _tenant_token(request) == _tenant_token(request)
@@ -98,6 +96,7 @@ def test_cache_key_format():
 
 
 # ── skip non-idempotency-keyed requests ───────────────────────────────────────
+
 
 @pytest.mark.asyncio
 async def test_no_idempotency_key_passes_through():
@@ -124,6 +123,7 @@ async def test_get_request_passes_through():
 
 # ── validation ────────────────────────────────────────────────────────────────
 
+
 @pytest.mark.asyncio
 async def test_empty_key_returns_400():
     request = _make_request(idempotency_key="   ")
@@ -139,6 +139,7 @@ async def test_key_too_long_returns_400():
 
 
 # ── cache miss → cache set ────────────────────────────────────────────────────
+
 
 @pytest.mark.asyncio
 async def test_cache_miss_calls_route_and_stores():
@@ -162,16 +163,19 @@ async def test_cache_miss_calls_route_and_stores():
 
 # ── cache hit → replay ────────────────────────────────────────────────────────
 
+
 @pytest.mark.asyncio
 async def test_cache_hit_replays_without_calling_route():
     """On cache hit, the route is NOT called and the cached response is returned."""
     request = _make_request(idempotency_key="op-002")
     cached_body = json.dumps({"data": {"episode_id": "cached"}}).encode()
-    cached_entry = json.dumps({
-        "status": 200,
-        "headers": {"content-type": "application/json"},
-        "body": base64.b64encode(cached_body).decode(),
-    }).encode()
+    cached_entry = json.dumps(
+        {
+            "status": 200,
+            "headers": {"content-type": "application/json"},
+            "body": base64.b64encode(cached_body).decode(),
+        }
+    ).encode()
 
     mock_redis = AsyncMock()
     mock_redis.get.return_value = cached_entry
@@ -197,6 +201,7 @@ async def test_cache_hit_replays_without_calling_route():
 
 # ── errors not cached ─────────────────────────────────────────────────────────
 
+
 @pytest.mark.asyncio
 async def test_4xx_response_not_cached():
     """4xx responses are not stored in Redis."""
@@ -214,6 +219,7 @@ async def test_4xx_response_not_cached():
 
 # ── per-org (per-auth) isolation ──────────────────────────────────────────────
 
+
 @pytest.mark.asyncio
 async def test_same_key_different_auth_uses_different_cache_slots():
     """Two callers with different auth tokens get different cache keys."""
@@ -227,6 +233,7 @@ async def test_same_key_different_auth_uses_different_cache_slots():
 
 # ── Redis unavailable → fail open ─────────────────────────────────────────────
 
+
 @pytest.mark.asyncio
 async def test_redis_unavailable_fails_open():
     """When Redis is unavailable, the route still processes normally."""
@@ -239,6 +246,7 @@ async def test_redis_unavailable_fails_open():
 
 
 # ── TTL assertion ─────────────────────────────────────────────────────────────
+
 
 @pytest.mark.asyncio
 async def test_stored_with_24h_ttl():

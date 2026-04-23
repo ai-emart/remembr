@@ -2,12 +2,12 @@
 
 import uuid
 
-import pytest
 from sqlalchemy import Column
 from sqlalchemy.dialects import postgresql
 
 from app.middleware.context import RequestContext
 from app.services.scoping import MemoryScope, ScopeResolver
+
 
 def _id() -> str:
     return str(uuid.uuid4())
@@ -57,7 +57,7 @@ def test_to_sql_filter_generates_or_filter_for_readable_scopes() -> None:
     agent_col = Column("agent_id", postgresql.UUID(as_uuid=False))
 
     clause = ScopeResolver.to_sql_filter(readable, org_col, team_col, user_col, agent_col)
-    
+
     # Compile the clause to SQL string
     compiled = str(
         clause.compile(dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True})

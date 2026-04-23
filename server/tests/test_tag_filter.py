@@ -7,8 +7,8 @@ from pydantic import ValidationError
 
 from app.services.tag_filter import TagFilter, build_tag_filter_sql
 
-
 # ── TagFilter validation ──────────────────────────────────────────────────────
+
 
 class TestTagFilterValidation:
     def test_eq_no_value_ok(self):
@@ -53,6 +53,7 @@ class TestTagFilterValidation:
 
 
 # ── build_tag_filter_sql ──────────────────────────────────────────────────────
+
 
 class TestBuildTagFilterSql:
     def test_empty_filters(self):
@@ -115,6 +116,7 @@ class TestBuildTagFilterSql:
 
 # ── _matches_tag_filters (Python-side filtering) ──────────────────────────────
 
+
 class TestMatchesTagFilters:
     """Tests for the Python-side tag filter evaluation used in filter_only mode."""
 
@@ -122,10 +124,13 @@ class TestMatchesTagFilters:
 
     def _match(self, tags: list[str], filters: list[TagFilter]) -> bool:
         from app.api.v1.memory import _matches_tag_filters
+
         return _matches_tag_filters(tags, filters)
 
     def test_eq_match(self):
-        assert self._match(["category:science", "source:web"], [TagFilter(key="category", value="science")])
+        assert self._match(
+            ["category:science", "source:web"], [TagFilter(key="category", value="science")]
+        )
 
     def test_eq_no_match(self):
         assert not self._match(["category:arts"], [TagFilter(key="category", value="science")])
@@ -137,7 +142,9 @@ class TestMatchesTagFilters:
         assert not self._match(["source:web"], [TagFilter(key="category")])
 
     def test_ne_excludes_match(self):
-        assert not self._match(["category:spam"], [TagFilter(key="category", value="spam", op="ne")])
+        assert not self._match(
+            ["category:spam"], [TagFilter(key="category", value="spam", op="ne")]
+        )
 
     def test_ne_passes_when_absent(self):
         assert self._match(["category:science"], [TagFilter(key="category", value="spam", op="ne")])
@@ -198,10 +205,13 @@ class TestMatchesTagFilters:
 
 # ── API-level validation (bad numeric value → 422) ────────────────────────────
 
+
 @pytest.mark.asyncio
+@pytest.mark.integration
 async def test_tag_filter_bad_numeric_returns_422(client):
     """Sending op='gt' with a non-numeric value should produce a 422."""
     import uuid as _uuid
+
     # Register a real user so auth passes and we reach body validation
     reg = await client.post(
         "/api/v1/auth/register",
