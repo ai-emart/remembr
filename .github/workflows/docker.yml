@@ -60,6 +60,8 @@ jobs:
 
       - name: Run smoke test
         run: bash scripts/smoke-test.sh
+        env:
+          SMOKE_TEST_URL: http://localhost:8000
 
       - name: Capture logs on failure
         if: failure()
