@@ -4,7 +4,10 @@ site_url: https://docs.remembr.dev
 repo_url: https://github.com/ai-emart/remembr
 theme:
   name: material
+  custom_dir: docs/overrides
   language: en
+  logo: images/logo.png
+  favicon: images/logo.png
   features:
     - navigation.sections
     - navigation.expand

@@ -34,7 +34,7 @@ dependencies = [
 [project.urls]
 Homepage = "https://github.com/ai-emart/remembr"
 Repository = "https://github.com/ai-emart/remembr"
-Documentation = "https://github.com/ai-emart/remembr#readme"
+Documentation = "https://ai-emart.github.io/remembr"
 "Bug Tracker" = "https://github.com/ai-emart/remembr/issues"
 
 [project.optional-dependencies]

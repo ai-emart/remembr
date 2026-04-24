@@ -4,7 +4,7 @@
   "description": "Persistent memory infrastructure for AI agents",
   "author": "Emmanuel Nwanguma",
   "license": "MIT",
-  "homepage": "https://github.com/ai-emart/remembr",
+  "homepage": "https://ai-emart.github.io/remembr",
   "repository": {
     "type": "git",
     "url": "https://github.com/ai-emart/remembr.git",

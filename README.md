@@ -129,9 +129,10 @@ main();
 
 ## Docs
 
-- [Docs index](docs/index.md)
-- [Framework quickstarts](docs/quickstart/langchain.md)
-- [API reference](docs/api-reference.md)
-- [Self-hosting guide](docs/self-hosted.md)
+Full documentation: **https://ai-emart.github.io/remembr**
+
+- [Framework quickstarts](https://ai-emart.github.io/remembr/quickstart/langchain/)
+- [API reference](https://ai-emart.github.io/remembr/api-reference/)
+- [Self-hosting guide](https://ai-emart.github.io/remembr/self-hosted/)
 - [Python SDK README](sdk/python/README.md)
 - [TypeScript SDK README](sdk/typescript/README.md)
