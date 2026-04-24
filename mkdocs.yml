@@ -1,6 +1,6 @@
 site_name: Remembr
 site_description: Persistent memory for AI agents
-site_url: https://docs.remembr.dev
+site_url: https://ai-emart.github.io/remembr
 repo_url: https://github.com/ai-emart/remembr
 theme:
   name: material
