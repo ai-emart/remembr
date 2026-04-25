@@ -54,7 +54,7 @@ When it finishes you'll see:
 
 ```
 [remembr-init] Setup complete!
-[remembr-init]   API:    http://localhost:8000
+[remembr-init]   API:    http://localhost:8000/api/v1
 ```
 
 > **Subsequent starts** (after the first): just `docker compose up -d`.
@@ -63,13 +63,13 @@ When it finishes you'll see:
 ## 4. Verify with Health Check
 
 ```bash
-curl http://localhost:8000/health
+curl http://localhost:8000/api/v1/health
 ```
 
 Expected response:
 
 ```json
-{"status": "ok", "environment": "local", "version": "0.1.0"}
+{"success": true, "data": {"status": "ok", "environment": "local", "version": "0.2.0", "redis_status": "healthy"}, "request_id": "..."}
 ```
 
 ## 5. Services Running
@@ -92,7 +92,7 @@ curl -X POST http://localhost:8000/api/v1/auth/register \
   -d '{
     "email": "you@example.com",
     "password": "your-secure-password",
-    "name": "Your Name"
+    "org_name": "My Org"
   }'
 ```
 
@@ -241,7 +241,7 @@ async with RemembrClient(api_key=API_KEY) as client:
 
 ```bash
 curl -X POST "$BASE_URL/memory" \
-  -H "Authorization: Bearer $API_KEY" \
+  -H "X-API-Key: $API_KEY" \
   -H "Idempotency-Key: my-unique-op-001" \
   -H "Content-Type: application/json" \
   -d '{"role":"user","content":"User confirmed subscription upgrade"}'
@@ -278,11 +278,11 @@ async with RemembrClient(api_key=API_KEY) as client:
 
 ```bash
 # Full JSON export
-curl "$BASE_URL/export" -H "Authorization: Bearer $API_KEY" --output export.json
+curl "$BASE_URL/export" -H "X-API-Key: $API_KEY" --output export.json
 
 # CSV with date filter
 curl "$BASE_URL/export?format=csv&from_date=2026-01-01T00:00:00Z" \
-  -H "Authorization: Bearer $API_KEY" --output export.csv
+  -H "X-API-Key: $API_KEY" --output export.csv
 ```
 
 ---

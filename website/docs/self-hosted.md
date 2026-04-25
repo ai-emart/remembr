@@ -26,7 +26,9 @@ Self-hosting Remembr V1 means running the server, workers, Postgres with `pgvect
 ```env
 DATABASE_URL=postgresql+asyncpg://remembr:remembr@pgbouncer:6432/remembr
 REDIS_URL=redis://redis:6379
-EMBEDDING_PROVIDER=sentence_transformers
+# Docker Compose default: ollama  (bundled, no API key needed)
+# Bare pip install default: sentence_transformers
+EMBEDDING_PROVIDER=ollama
 OLLAMA_BASE_URL=http://ollama:11434
 OLLAMA_EMBEDDING_MODEL=nomic-embed-text
 ```

@@ -5,7 +5,7 @@ This reference documents the current V1 API surface exposed by the FastAPI serve
 ## Conventions
 
 - Base URL: `http://localhost:8000/api/v1`
-- Auth: `Authorization: Bearer <api-key-or-access-token>`
+- Auth: `X-API-Key: rmbr_...` for SDK/API key auth, `Authorization: Bearer <jwt>` for user session auth
 - Response envelope: `{ "success": true, "data": ..., "request_id": "..." }`
 - Timestamps are ISO 8601 UTC strings
 - Soft-deleted memories do not appear in normal search results
@@ -20,7 +20,14 @@ Response shape:
 
 ```json
 {
-  "status": "ok"
+  "success": true,
+  "data": {
+    "status": "ok",
+    "environment": "local",
+    "version": "0.2.0",
+    "redis_status": "healthy"
+  },
+  "request_id": "uuid"
 }
 ```
 
