@@ -160,7 +160,7 @@ class RemembrClient:
                 base_url=self.base_url,
                 timeout=httpx.Timeout(self.timeout),
                 headers={
-                    "Authorization": f"Bearer {self.api_key}",
+                    "X-API-Key": self.api_key,
                     "Accept": "application/json",
                     "Content-Type": "application/json",
                 },

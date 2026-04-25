@@ -202,7 +202,8 @@ def health() -> None:
             print_error(f"HTTP {exc.response.status_code} from {health_url}")
             raise typer.Exit(1)
 
-        data = response.json()
+        envelope = response.json()
+        data = envelope.get("data", envelope)
         status = data.get("status", "unknown")
         color = "green" if status == "ok" else "red"
         console.print(f"[bold {color}]*[/bold {color}] status: [bold]{status}[/bold]")
@@ -315,7 +316,7 @@ def sessions_get(
         with _catch():
             async with _httpx.AsyncClient(
                 base_url=base_url,
-                headers={"Authorization": f"Bearer {api_key}", "Accept": "application/json"},
+                headers={"X-API-Key": api_key, "Accept": "application/json"},
                 timeout=30,
             ) as http:
                 resp = await http.get(f"/sessions/{session_id}")

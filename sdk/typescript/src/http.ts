@@ -105,7 +105,7 @@ export class RemembrHttp {
         ...options.headers,
       };
       if (this.apiKey) {
-        headers.Authorization = `Bearer ${this.apiKey}`;
+        headers['X-API-Key'] = this.apiKey;
       }
 
       return await fetch(this.buildUrl(path, options.params), {

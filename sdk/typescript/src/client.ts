@@ -386,7 +386,7 @@ export class RemembrClient {
       'Content-Type': 'application/json',
     };
     if (this.http['apiKey']) {
-      headers.Authorization = `Bearer ${this.http['apiKey']}`;
+      headers['X-API-Key'] = this.http['apiKey'];
     }
 
     const baseUrl = this.http['baseUrl'];
