@@ -35,7 +35,7 @@ try {
     $healthy = $false
     for ($i = 1; $i -le 40; $i++) {
         try {
-            Invoke-RestMethod -Uri "$serverUrl/health" -Method Get | Out-Null
+            Invoke-RestMethod -Uri "$serverUrl/api/v1/health" -Method Get | Out-Null
             $healthy = $true
             break
         } catch {
@@ -47,7 +47,7 @@ try {
         Fail "Server not healthy after 40 attempts"
     }
 
-    $health = Invoke-RestMethod -Uri "$serverUrl/health" -Method Get
+    $health = Invoke-RestMethod -Uri "$serverUrl/api/v1/health" -Method Get
     if (-not $health.data.status) {
         Fail "/health did not return status field"
     }

@@ -13,13 +13,13 @@ pip install remembr
 ```bash
 remembr --help
 remembr --version
-remembr --api-key rk_demo --base-url http://localhost:8000/api/v1 health
+remembr --api-key YOUR_API_KEY --base-url http://localhost:8000/api/v1 health
 ```
 
 ## Config
 
 ```bash
-remembr config set api_key rk_demo
+remembr config set api_key YOUR_API_KEY
 remembr config set base_url http://localhost:8000/api/v1
 remembr config get api_key
 remembr config show

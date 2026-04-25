@@ -59,7 +59,7 @@ async def health_check(request: Request):
         {
             "status": "ok",
             "environment": settings.environment,
-            "version": "0.1.0",
+            "version": "0.2.0",
             "redis_status": redis_status,
         },
         request_id=request.state.request_id,

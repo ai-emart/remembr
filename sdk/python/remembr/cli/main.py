@@ -189,7 +189,7 @@ def health() -> None:
     import httpx
 
     base_url = _state["base_url"] or "http://localhost:8000/api/v1"
-    health_url = base_url.rstrip("/").removesuffix("/api/v1") + "/health"
+    health_url = base_url.rstrip("/") + "/health"
 
     with _catch():
         try:

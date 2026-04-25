@@ -12,7 +12,7 @@ pip install remembr haystack-ai
 from remembr import RemembrClient
 from adapters.haystack.remembr_haystack_memory import RemembrMemoryRetriever, RemembrMemoryWriter
 
-client = RemembrClient(api_key="rk_demo", base_url="http://localhost:8000/api/v1")
+client = RemembrClient(api_key="YOUR_API_KEY", base_url="http://localhost:8000/api/v1")
 writer = RemembrMemoryWriter(client=client, default_session_id="haystack-run")
 retriever = RemembrMemoryRetriever(client=client, default_session_id="haystack-run")
 ```
@@ -56,7 +56,7 @@ asyncio.run(clear())
 from remembr import RemembrClient
 from adapters.haystack.remembr_haystack_memory import RemembrMemoryRetriever, RemembrMemoryWriter
 
-client = RemembrClient(api_key="rk_demo", base_url="http://localhost:8000/api/v1")
+client = RemembrClient(api_key="YOUR_API_KEY", base_url="http://localhost:8000/api/v1")
 writer = RemembrMemoryWriter(client=client, default_session_id="support-search")
 retriever = RemembrMemoryRetriever(client=client, default_session_id="support-search")
 

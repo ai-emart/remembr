@@ -10,7 +10,7 @@
 from remembr import RemembrClient
 from adapters.langgraph.remembr_langgraph_memory import RemembrLangGraphCheckpointer
 
-client = RemembrClient(api_key="rk_demo", base_url="http://localhost:8000/api/v1")
+client = RemembrClient(api_key="YOUR_API_KEY", base_url="http://localhost:8000/api/v1")
 checkpointer = RemembrLangGraphCheckpointer(client=client, session_id="thread-42")
 ```
 
@@ -63,7 +63,7 @@ builder.add_node("step", step)
 builder.add_edge(START, "step")
 builder.add_edge("step", END)
 
-client = RemembrClient(api_key="rk_demo", base_url="http://localhost:8000/api/v1")
+client = RemembrClient(api_key="YOUR_API_KEY", base_url="http://localhost:8000/api/v1")
 graph = builder.compile(
     checkpointer=RemembrLangGraphCheckpointer(client=client, session_id="thread-42")
 )

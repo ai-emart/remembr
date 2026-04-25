@@ -11,7 +11,7 @@ from langchain_core.messages import AIMessage, HumanMessage
 from remembr import RemembrClient
 from adapters.langchain.remembr_memory import RemembrMemory
 
-client = RemembrClient(api_key="rk_demo", base_url="http://localhost:8000/api/v1")
+client = RemembrClient(api_key="YOUR_API_KEY", base_url="http://localhost:8000/api/v1")
 memory = RemembrMemory(
     client=client,
     session_id="support-session-1",
@@ -50,7 +50,7 @@ from langchain_core.messages import AIMessage, HumanMessage
 from remembr import RemembrClient
 from adapters.langchain.remembr_memory import RemembrMemory
 
-client = RemembrClient(api_key="rk_demo", base_url="http://localhost:8000/api/v1")
+client = RemembrClient(api_key="YOUR_API_KEY", base_url="http://localhost:8000/api/v1")
 history = RemembrMemory(
     client=client,
     session_id="lc-session",

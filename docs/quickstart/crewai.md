@@ -10,7 +10,7 @@
 from remembr import RemembrClient
 from adapters.crewai.remembr_crew_memory import RemembrCrewMemory
 
-client = RemembrClient(api_key="rk_demo", base_url="http://localhost:8000/api/v1")
+client = RemembrClient(api_key="YOUR_API_KEY", base_url="http://localhost:8000/api/v1")
 memory = RemembrCrewMemory(
     client=client,
     agent_id="researcher-1",
@@ -45,7 +45,7 @@ memory.reset()
 from remembr import RemembrClient
 from adapters.crewai.remembr_crew_memory import RemembrCrewMemory
 
-client = RemembrClient(api_key="rk_demo", base_url="http://localhost:8000/api/v1")
+client = RemembrClient(api_key="YOUR_API_KEY", base_url="http://localhost:8000/api/v1")
 crew_memory = RemembrCrewMemory(client=client, session_id="proposal-run")
 crew_memory = RemembrCrewMemory(
     client=client,

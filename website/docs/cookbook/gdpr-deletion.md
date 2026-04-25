@@ -19,7 +19,7 @@ from remembr import RemembrClient
 
 
 async def main() -> None:
-    async with RemembrClient(api_key="rk_demo") as client:
+    async with RemembrClient(api_key="YOUR_API_KEY") as client:
         report = await client.forget_user("00000000-0000-0000-0000-000000000000")
         print(report)
 

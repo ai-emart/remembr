@@ -23,7 +23,7 @@ from remembr import RemembrClient, SearchWeights
 
 
 async def main() -> None:
-    async with RemembrClient(api_key="rk_demo") as client:
+    async with RemembrClient(api_key="YOUR_API_KEY") as client:
         results = await client.search(
             "customer reported oauth timeout",
             search_mode="hybrid",

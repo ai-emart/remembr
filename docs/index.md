@@ -23,7 +23,7 @@ from remembr import RemembrClient, TagFilter
 
 async def main() -> None:
     async with RemembrClient(
-        api_key="rk_demo",
+        api_key="YOUR_API_KEY",
         base_url="http://localhost:8000/api/v1",
     ) as client:
         session = await client.create_session(metadata={"app": "demo"})

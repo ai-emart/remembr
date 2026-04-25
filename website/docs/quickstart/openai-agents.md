@@ -12,7 +12,7 @@ pip install remembr openai-agents
 from remembr import RemembrClient
 from adapters.openai_agents.remembr_openai_memory import RemembrMemoryTools
 
-client = RemembrClient(api_key="rk_demo", base_url="http://localhost:8000/api/v1")
+client = RemembrClient(api_key="YOUR_API_KEY", base_url="http://localhost:8000/api/v1")
 RemembrMemoryTools.configure(client)
 ```
 
@@ -57,7 +57,7 @@ asyncio.run(clear())
 from remembr import RemembrClient
 from adapters.openai_agents.remembr_openai_memory import RemembrMemoryTools
 
-client = RemembrClient(api_key="rk_demo", base_url="http://localhost:8000/api/v1")
+client = RemembrClient(api_key="YOUR_API_KEY", base_url="http://localhost:8000/api/v1")
 RemembrMemoryTools.configure(client)
 
 print(

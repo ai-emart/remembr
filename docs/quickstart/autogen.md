@@ -10,7 +10,7 @@
 from remembr import RemembrClient
 from adapters.autogen.remembr_autogen_memory import RemembrAutoGenMemory
 
-client = RemembrClient(api_key="rk_demo", base_url="http://localhost:8000/api/v1")
+client = RemembrClient(api_key="YOUR_API_KEY", base_url="http://localhost:8000/api/v1")
 memory = RemembrAutoGenMemory(client=client, conversation_id="conv-7")
 ```
 
@@ -49,7 +49,7 @@ asyncio.run(clear())
 from remembr import RemembrClient
 from adapters.autogen.remembr_autogen_memory import RemembrAutoGenMemory
 
-client = RemembrClient(api_key="rk_demo", base_url="http://localhost:8000/api/v1")
+client = RemembrClient(api_key="YOUR_API_KEY", base_url="http://localhost:8000/api/v1")
 conversation = RemembrAutoGenMemory(client=client, conversation_id="conv-support")
 
 conversation.save_context(

@@ -12,7 +12,7 @@ from adapters.pydantic_ai.remembr_pydantic_memory import create_remembr_agent
 agent = create_remembr_agent(
     model="openai:gpt-4o-mini",
     system_prompt="You are a helpful assistant.",
-    api_key="rk_demo",
+    api_key="YOUR_API_KEY",
     session_id="pydantic-run",
 )
 ```
@@ -43,7 +43,7 @@ from adapters.pydantic_ai.remembr_pydantic_memory import create_remembr_agent
 agent = create_remembr_agent(
     model="openai:gpt-4o-mini",
     system_prompt="You help sales engineers remember customer requirements.",
-    api_key="rk_demo",
+    api_key="YOUR_API_KEY",
     session_id="run-88",
 )
 print(agent.remembr_deps.session_id)

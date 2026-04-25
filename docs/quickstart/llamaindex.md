@@ -11,7 +11,7 @@ from llama_index.core.base.llms.types import ChatMessage, MessageRole
 from remembr import RemembrClient
 from adapters.llamaindex.remembr_llamaindex_memory import RemembrChatStore
 
-client = RemembrClient(api_key="rk_demo", base_url="http://localhost:8000/api/v1")
+client = RemembrClient(api_key="YOUR_API_KEY", base_url="http://localhost:8000/api/v1")
 chat_store = RemembrChatStore(client=client)
 ```
 
@@ -43,7 +43,7 @@ chat_store.delete_messages("llama-session")
 from remembr import RemembrClient
 from adapters.llamaindex.remembr_llamaindex_memory import RemembrSemanticMemory
 
-client = RemembrClient(api_key="rk_demo", base_url="http://localhost:8000/api/v1")
+client = RemembrClient(api_key="YOUR_API_KEY", base_url="http://localhost:8000/api/v1")
 store = RemembrSemanticMemory.from_client(client=client, session_id="index-session")
 
 matches = store.load_context({"input": "What compatibility requirement do we have?"})

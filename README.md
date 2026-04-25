@@ -17,10 +17,10 @@ cp .env.example .env
 python -c "import secrets; print(secrets.token_hex(32))"
 # paste the generated value into SECRET_KEY in .env
 bash scripts/docker-init.sh
-curl http://localhost:8000/health
+curl http://localhost:8000/api/v1/health
 ```
 
-`JINA_API_KEY` is optional for local setup. For bare installs, `EMBEDDING_PROVIDER=sentence_transformers` is the default. The Docker bootstrap script starts the full local stack, including PostgreSQL, Redis, PgBouncer, Ollama, the API server, and migrations.
+The Docker bootstrap script starts the full local stack: PostgreSQL, Redis, PgBouncer, Ollama (for embeddings), the API server, worker, and migrations. `EMBEDDING_PROVIDER=ollama` is the default inside Docker Compose; `sentence_transformers` is the default for bare pip installs.
 
 See [QUICKSTART.md](QUICKSTART.md) for the full self-hosted walkthrough.
 
@@ -129,10 +129,10 @@ main();
 
 ## Docs
 
-Full documentation: **https://ai-emart.github.io/remembr**
+Full documentation: **https://ai-emart.github.io/remembr/**
 
-- [Framework quickstarts](https://ai-emart.github.io/remembr/quickstart/langchain/)
-- [API reference](https://ai-emart.github.io/remembr/api-reference/)
-- [Self-hosting guide](https://ai-emart.github.io/remembr/self-hosted/)
+- [Framework quickstarts](https://ai-emart.github.io/remembr/docs/quickstart/langchain)
+- [API reference](https://ai-emart.github.io/remembr/docs/api-reference)
+- [Self-hosting guide](https://ai-emart.github.io/remembr/docs/self-hosted)
 - [Python SDK README](sdk/python/README.md)
 - [TypeScript SDK README](sdk/typescript/README.md)

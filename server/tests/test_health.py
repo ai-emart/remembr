@@ -46,7 +46,7 @@ def test_health_check_response_format(client):
     assert "redis_status" in data
 
     assert data["status"] == "ok"
-    assert data["version"] == "0.1.0"
+    assert data["version"] == "0.2.0"
     assert data["redis_status"] in [
         "healthy",
         "unhealthy",

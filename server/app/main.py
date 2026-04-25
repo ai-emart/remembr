@@ -77,7 +77,7 @@ async def lifespan(app: FastAPI):
             redis_client=get_redis_client(),
             celery_app=celery_app,
         )
-        logger.info("Application startup", version="0.1.0", redis="connected")
+        logger.info("Application startup", version="0.2.0", redis="connected")
     except Exception as e:
         logger.error("Failed to initialize Redis", error=str(e))
         # Continue without Redis - endpoints will handle gracefully
@@ -105,7 +105,7 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="Remembr API",
         description="Persistent memory infrastructure for AI agents",
-        version="0.1.0",
+        version="0.2.0",
         lifespan=lifespan,
         docs_url="/docs" if not settings.is_production else None,
         redoc_url="/redoc" if not settings.is_production else None,

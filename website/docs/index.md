@@ -17,8 +17,13 @@ Remembr is persistent memory infrastructure for AI systems. It gives agents a cl
 ## 60-second demo
 
 ```bash
+git clone https://github.com/ai-emart/remembr.git
+cd remembr
 cp .env.example .env
+python -c "import secrets; print(secrets.token_hex(32))"
+# paste the output into SECRET_KEY in .env
 bash scripts/docker-init.sh
+curl http://localhost:8000/api/v1/health
 ```
 
 ```python
@@ -29,7 +34,7 @@ from remembr import RemembrClient, TagFilter
 
 async def main() -> None:
     async with RemembrClient(
-        api_key="rk_demo",
+        api_key="YOUR_API_KEY",
         base_url="http://localhost:8000/api/v1",
     ) as client:
         session = await client.create_session(metadata={"app": "demo"})

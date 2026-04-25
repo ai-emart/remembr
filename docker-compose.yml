@@ -5,6 +5,11 @@
 # Day-to-day:        docker compose up -d
 # Stop:              docker compose down
 # Nuke volumes:      docker compose down -v
+#
+# Embedding providers:
+#   ollama (default) — bundled, no API key needed
+#   sentence_transformers — local, no external service needed
+#   jina / openai — set EMBEDDING_PROVIDER + API key in .env
 # =============================================================================
 
 services:
@@ -33,8 +38,6 @@ services:
 
   # ---------------------------------------------------------------------------
   # PgBouncer — Connection pooler (transaction mode)
-  # Routes DATABASE_URL traffic through a small connection pool so the
-  # FastAPI server can hold many open asyncpg connections cheaply.
   # ---------------------------------------------------------------------------
   pgbouncer:
     image: edoburu/pgbouncer:latest
@@ -75,7 +78,8 @@ services:
 
   # ---------------------------------------------------------------------------
   # Ollama — Local embedding inference (no API key required)
-  # Pull the model on first run: docker compose run --rm ollama-init
+  # Included in default profile so docker compose up starts it automatically.
+  # Set EMBEDDING_PROVIDER=sentence_transformers in .env to skip it.
   # ---------------------------------------------------------------------------
   ollama:
     image: ollama/ollama:latest
@@ -94,7 +98,6 @@ services:
 
   # ---------------------------------------------------------------------------
   # Ollama Init — Pulls nomic-embed-text once, then exits.
-  # Runs automatically on `docker compose up -d` (restart: "no").
   # Re-running is safe — ollama pull is idempotent.
   # ---------------------------------------------------------------------------
   ollama-init:
@@ -130,8 +133,6 @@ services:
       pgbouncer:
         condition: service_started
       redis:
-        condition: service_healthy
-      ollama:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "celery -A app.celery_app inspect ping -d celery@$$HOSTNAME || exit 1"]
@@ -183,8 +184,6 @@ services:
       pgbouncer:
         condition: service_started
       redis:
-        condition: service_healthy
-      ollama:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]

@@ -16,7 +16,7 @@ from remembr import RemembrClient, TagFilter
 
 
 async def main() -> None:
-    async with RemembrClient(api_key="rk_demo") as client:
+    async with RemembrClient(api_key="YOUR_API_KEY") as client:
         session = await client.create_session(metadata={"channel": "support"})
         await client.store(
             "Customer wants Friday billing summaries.",
