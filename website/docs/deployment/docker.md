@@ -27,7 +27,7 @@ The root [`docker-compose.yml`](../self-hosted.md) is the reference deployment. 
 ```env
 DATABASE_URL=postgresql+asyncpg://remembr:remembr@pgbouncer:6432/remembr
 REDIS_URL=redis://redis:6379
-EMBEDDING_PROVIDER=sentence_transformers
+EMBEDDING_PROVIDER=ollama
 OLLAMA_BASE_URL=http://ollama:11434
 OLLAMA_EMBEDDING_MODEL=nomic-embed-text
 ```
@@ -37,7 +37,7 @@ OLLAMA_EMBEDDING_MODEL=nomic-embed-text
 ## Verify
 
 ```bash
-curl http://localhost:8000/health
+curl http://localhost:8000/api/v1/health
 ```
 
 ## Notes
