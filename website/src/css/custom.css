@@ -1,0 +1,44 @@
+:root {
+  --ifm-color-primary: #7c3aed;
+  --ifm-color-primary-dark: #6d28d9;
+  --ifm-color-primary-darker: #5b21b6;
+  --ifm-color-primary-darkest: #4c1d95;
+  --ifm-color-primary-light: #8b5cf6;
+  --ifm-color-primary-lighter: #a78bfa;
+  --ifm-color-primary-lightest: #c4b5fd;
+  --ifm-code-font-size: 92%;
+  --docusaurus-highlighted-code-line-bg: rgba(124, 58, 237, 0.15);
+  --ifm-navbar-background-color: #0f0f1a;
+  --ifm-navbar-shadow: 0 1px 0 rgba(139, 92, 246, 0.2);
+}
+
+[data-theme='dark'] {
+  --ifm-color-primary: #a78bfa;
+  --ifm-color-primary-dark: #8b5cf6;
+  --ifm-color-primary-darker: #7c3aed;
+  --ifm-color-primary-darkest: #6d28d9;
+  --ifm-color-primary-light: #c4b5fd;
+  --ifm-color-primary-lighter: #ddd6fe;
+  --ifm-color-primary-lightest: #ede9fe;
+  --ifm-background-color: #0d0d18;
+  --ifm-background-surface-color: #13131f;
+  --docusaurus-highlighted-code-line-bg: rgba(167, 139, 250, 0.15);
+  --ifm-navbar-background-color: #0f0f1a;
+  --ifm-footer-background-color: #0a0a12;
+}
+
+/* Navbar logo sizing */
+.navbar__logo img {
+  height: 28px;
+  width: auto;
+}
+
+/* Sidebar active item */
+.menu__link--active {
+  font-weight: 600;
+}
+
+/* Code blocks */
+pre code {
+  font-family: 'JetBrains Mono', 'Fira Code', 'Courier New', monospace;
+}
