@@ -49,10 +49,11 @@ services:
       DB_USER: remembr
       DB_PASSWORD: remembr
       DB_NAME: remembr
+      LISTEN_PORT: 6432
       POOL_MODE: transaction
       DEFAULT_POOL_SIZE: 20
       MAX_CLIENT_CONN: 200
-      AUTH_TYPE: md5
+      AUTH_TYPE: scram-sha-256
       SERVER_TLS_SSLMODE: disable
     ports:
       - "6432:6432"
