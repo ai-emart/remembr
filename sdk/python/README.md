@@ -58,7 +58,7 @@ cp .env.example .env
 python -c "import secrets; print(secrets.token_hex(32))"
 # paste the generated value into SECRET_KEY in .env
 bash scripts/docker-init.sh
-curl http://localhost:8000/health
+curl http://localhost:8000/api/v1/health
 ```
 
 The Docker bootstrap flow works without Jina. For a plain Python install outside Docker, the default embedding backend is `sentence_transformers`.

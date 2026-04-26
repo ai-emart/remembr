@@ -43,7 +43,7 @@ uvicorn app.main:app --reload
 ## Verify
 
 ```bash
-curl http://localhost:8000/health
+curl http://localhost:8000/api/v1/health
 ```
 
 ## Testing
