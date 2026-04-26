@@ -7,8 +7,7 @@ import respx
 
 from remembr.cli.main import app
 
-# health_url = base_url.removesuffix("/api/v1") + "/health" = "http://test.local/health"
-_HEALTH_URL = "http://test.local/health"
+_HEALTH_URL = "http://test.local/api/v1/health"
 
 
 @respx.mock

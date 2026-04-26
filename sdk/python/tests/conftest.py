@@ -40,7 +40,7 @@ def mock_client() -> tuple[RemembrClient, MockAPI]:
     client._client = httpx.AsyncClient(
         base_url=client.base_url,
         headers={
-            "Authorization": f"Bearer {client.api_key}",
+            "X-API-Key": client.api_key,
             "Accept": "application/json",
             "Content-Type": "application/json",
         },
