@@ -54,7 +54,7 @@ try {
     Pass "/health OK"
 
     $ts = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
-    $email = "smoke-$ts@test.local"
+    $email = "smoke-$ts@example.com"
     $password = "smoke-pass-$ts"
     $orgName = "Smoke Test Org $ts"
 
